@@ -37,9 +37,9 @@ def read_existing_transactions() -> dict[str, pl.DataFrame]:
                 )
                 for dump in dumps
             ],
-            how="diagonal_relaxed",
+            how="diagonal_relaxed", # allow for missing fields in some of the shorter top-ups
         )
-        .unique()
+        .unique() # remove the one-day overlap in update_transactions.py
         .sort("bookingDateTime", descending=True)
         for (account, dumps) in raw_dumps.items()
     }
