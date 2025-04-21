@@ -3,6 +3,7 @@ import logging
 import requests
 import polars as pl
 from polars import col as C
+import dotenv
 
 
 ### Client class for GoCardless API
@@ -10,8 +11,8 @@ from polars import col as C
 ### Upon initialization it will try to get a list of institutions after authentication.
 class Client:
     _base_url = "https://bankaccountdata.gocardless.com/api/v2/"
-    _secret_id = "FILL_IN"
-    _secret_key = "FILL_IN"
+    _secret_id = dotenv.get_key('.env', 'GOCARDLESS_SECRET_ID')
+    _secret_key = dotenv.get_key('.env', 'GOCARDLESS_SECRET_KEY')
 
     _token_file = "token.json"
     token: None | dict[str, str] = None
