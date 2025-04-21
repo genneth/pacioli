@@ -1,6 +1,6 @@
 # Pacioli
 
-![Luca Pacioli](https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Pacioli.jpg/800px-Pacioli.jpg)
+![Luca Pacioli](https://commons.wikimedia.org/wiki/File:Luca_Pacioli_in_the_Summa.jpg#/media/File:Luca_Pacioli_in_the_Summa.jpg)
 
 [Luca Pacioli](https://en.wikipedia.org/wiki/Luca_Pacioli) is widely regarded as the father of
 accounting.
