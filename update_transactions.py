@@ -41,7 +41,10 @@ for account, max_date in max_dates.items():
         ) as f:  # notice the x instead of w
             dump = client.get(
                 "accounts/" + account + "/transactions/",
-                {"date_from": max_date, "date_to": yesterday_str}, # deliberately overlap one day
+                {
+                    "date_from": max_date,  # deliberately overlap one day
+                    "date_to": yesterday_str,
+                },
             )
             logging.getLogger().info(
                 f"Downloaded {len(dump['transactions']['booked'])} transaction(s) for {account} from {max_date} to {yesterday_str}."

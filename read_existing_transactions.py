@@ -4,6 +4,7 @@ import logging
 import polars as pl
 from polars import col as C
 
+
 ### Read existing transactions from raw
 def read_existing_transactions() -> dict[str, pl.DataFrame]:
     # load existing json dumps
@@ -37,9 +38,9 @@ def read_existing_transactions() -> dict[str, pl.DataFrame]:
                 )
                 for dump in dumps
             ],
-            how="diagonal_relaxed", # allow for missing fields in some of the shorter top-ups
+            how="diagonal_relaxed",  # allow for missing fields in some of the shorter top-ups
         )
-        .unique() # remove the one-day overlap in update_transactions.py
+        .unique()  # remove the one-day overlap in update_transactions.py
         .sort("bookingDateTime", descending=True)
         for (account, dumps) in raw_dumps.items()
     }
