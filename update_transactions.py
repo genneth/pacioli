@@ -23,10 +23,18 @@ client = Client()
 # existing data
 per_account_transactions = read_existing_transactions()
 
-max_dates = {
-    account: tran["bookingDate"].max().strftime("%Y-%m-%d")
-    for account, tran in per_account_transactions.items()
-}
+max_dates = {}
+for account, tran in per_account_transactions.items():
+    if not tran:
+        continue
+    # Validate bookingDate exists before calculating max
+    for t in tran:
+        if "bookingDate" not in t:
+            logger.error(f"Transaction missing bookingDate for account {account}: {json.dumps(t)}")
+            import sys
+            sys.exit(1)
+    
+    max_dates[account] = max(t["bookingDate"] for t in tran)
 
 yesterday = datetime.date.today() - datetime.timedelta(days=1)
 yesterday_str = yesterday.strftime("%Y-%m-%d")

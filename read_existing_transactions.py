@@ -1,48 +1,69 @@
 import os
 import json
 import logging
-import polars as pl
-from polars import col as C
-
 
 ### Read existing transactions from raw
-def read_existing_transactions() -> dict[str, pl.DataFrame]:
+def read_existing_transactions() -> dict[str, list[dict]]:
     # load existing json dumps
     raw_dumps: dict[str, list] = {}
-    for account in os.listdir("raw"):
-        raw_dumps[account] = []
-        for file in os.listdir("raw/" + account):
-            if not file.endswith(".json"):
-                logging.getLogger().warning(
-                    f"File {file} is not a JSON file. Skipping."
-                )
+    if os.path.exists("raw"):
+        for account in os.listdir("raw"):
+            account_path = os.path.join("raw", account)
+            if not os.path.isdir(account_path):
                 continue
-            with open("raw/" + account + "/" + file, "r") as f:
-                raw_dumps[account].append(json.load(f))
-                logging.getLogger().info(f"Loaded {file} for account {account}.")
+            
+            raw_dumps[account] = []
+            for file in os.listdir(account_path):
+                if not file.endswith(".json"):
+                    logging.getLogger().warning(
+                        f"File {file} is not a JSON file. Skipping."
+                    )
+                    continue
+                file_full_path = os.path.join(account_path, file)
+                with open(file_full_path, "r", encoding="utf-8") as f:
+                    try:
+                        data = json.load(f)
+                        raw_dumps[account].append(data)
+                        logging.getLogger().info(f"Loaded {file} for account {account}.")
+                    except json.JSONDecodeError:
+                        logging.getLogger().error(f"Failed to decode JSON from {file}")
 
-    # partially normalise
-    per_account_transactions = {
-        account: pl.concat(
-            [
-                pl.from_dicts(dump["transactions"]["booked"], infer_schema_length=None)
-                .with_columns(
-                    C("bookingDate").cast(pl.Date),
-                    C("valueDate").cast(pl.Date),
-                    C("bookingDateTime").cast(pl.Datetime),
-                    C("valueDateTime").cast(pl.Datetime),
-                    C("transactionAmount").struct.unnest(),
-                )
-                .with_columns(
-                    C("amount").cast(pl.Float32),
-                )
-                for dump in dumps
-            ],
-            how="diagonal_relaxed",  # allow for missing fields in some of the shorter top-ups
-        )
-        .unique()  # remove the one-day overlap in update_transactions.py
-        .sort("bookingDateTime", descending=True)
-        for (account, dumps) in raw_dumps.items()
-    }
+    # Merge and deduplicate
+    per_account_transactions = {}
+    
+    for account, dumps in raw_dumps.items():
+        all_transactions = []
+        for i, dump in enumerate(dumps):
+            if not isinstance(dump, dict):
+                raise ValueError(f"Dump {i} for account '{account}' is not a dictionary.")
+            
+            transactions_wrapper = dump.get("transactions")
+            if not isinstance(transactions_wrapper, dict):
+                 raise ValueError(f"Dump {i} for account '{account}' missing 'transactions' dict.")
+            
+            txs = transactions_wrapper.get("booked")
+            if not isinstance(txs, list):
+                 raise ValueError(f"Dump {i} for account '{account}' missing 'booked' list in 'transactions'.")
+
+            all_transactions.extend(txs)
+        
+        # Deduplication based on internalTransactionId
+        unique_transactions = []
+        seen_ids = set()
+        
+        for tx in all_transactions:
+            if not isinstance(tx, dict):
+                 raise ValueError(f"Found non-dict transaction in account '{account}'.")
+
+            tx_id = tx.get("internalTransactionId")
+            
+            if not tx_id:
+                raise ValueError(f"Transaction missing internalTransactionId in account '{account}'. Transaction dump: {json.dumps(tx)}")
+            
+            if tx_id not in seen_ids:
+                seen_ids.add(tx_id)
+                unique_transactions.append(tx)
+        
+        per_account_transactions[account] = unique_transactions
 
     return per_account_transactions
