@@ -1,3 +1,14 @@
+"""
+Safe Transaction Log Updater
+
+This script downloads new transactions and appends them to the 'raw/' directory as immutable daily JSON files.
+
+Safety & Idempotency Principles:
+1.  **Append-Only:** We never modify existing JSON files. We only create new files for the current target date.
+2.  **Exclusive Creation:** We use file mode "x" to guarantee we don't accidentally overwrite data. If a file exists, we skip it.
+3.  **Atomic-ish Writes:** If the API fetch fails or the script crashes mid-write, the specific `except` block ensures the partial/empty file is deleted. This prevents "zombie" files from blocking future runs.
+4.  **Data Overlap:** We deliberately overlap the fetch window with the last known transaction date. This ensures we don't miss transactions that might have settled late on that day. The reading logic (`read_existing_transactions.py`) is responsible for deduplicating these overlapping records.
+"""
 import datetime
 import json
 import logging
@@ -44,19 +55,26 @@ for account, max_date in max_dates.items():
     if max_date >= yesterday_str:
         logging.getLogger().info(f"Account {account} is up to date.")
         continue
+
+    file_path = "raw/" + account + "/" + yesterday_str + ".json"
     try:
-        with open(
-            "raw/" + account + "/" + yesterday_str + ".json", "x"
-        ) as f:  # notice the x instead of w
+        # Use exclusive creation mode ("x") to ensure we never overwrite existing data.
+        # This makes the script idempotent and safe to re-run if it fails mid-process.
+        with open(file_path, "x") as f:
             dump = client.get(
                 "accounts/" + account + "/transactions/",
                 {
-                    "date_from": max_date,  # deliberately overlap one day
+                    # Deliberately overlap with the last known date.
+                    # We do this because bank settlement times can vary, and we might have missed
+                    # a transaction late in the day on the previous run.
+                    # Downstream consumers (read_existing_transactions.py) MUST handle deduplication.
+                    "date_from": max_date,
                     "date_to": yesterday_str,
                 },
             )
             if not dump:
-                raise ValueError()
+                raise ValueError("No data returned from API")
+            
             logging.getLogger().info(
                 f"Downloaded {len(dump['transactions']['booked'])} transaction(s) for {account} from {max_date} to {yesterday_str}."
             )
@@ -66,6 +84,10 @@ for account, max_date in max_dates.items():
             f"File {yesterday_str} already exists for {account}. Skipping."
         )
         continue
-    except ValueError:
-        # delete the file if it was created but empty
-        os.remove("raw/" + account + "/" + yesterday_str + ".json")
+    except Exception as e:
+        logging.getLogger().error(f"Failed to update {account}: {e}")
+        # Atomic Cleanup:
+        # If ANY error occurs (network, disk full, invalid JSON), we must delete the file.
+        # Otherwise, we leave a 0-byte or partial 'zombie' file that blocks future runs (due to 'x' mode).
+        if os.path.exists(file_path):
+            os.remove(file_path)
