@@ -1,9 +1,10 @@
 import json
 import logging
-import requests
-import polars as pl
-from polars import col as C
+
 import dotenv
+import polars as pl
+import requests
+from polars import col as C
 
 
 ### Client class for GoCardless API
@@ -30,7 +31,7 @@ class Client:
 
     def try_load_token(self):
         try:
-            with open(self._token_file, "r") as f:
+            with open(self._token_file) as f:
                 self.token = json.load(f)
             return True
         except Exception as ex:

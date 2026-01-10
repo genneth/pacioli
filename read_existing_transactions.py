@@ -1,6 +1,7 @@
-import os
 import json
 import logging
+import os
+
 
 ### Read existing transactions from raw
 def read_existing_transactions() -> dict[str, list[dict]]:
@@ -20,7 +21,7 @@ def read_existing_transactions() -> dict[str, list[dict]]:
                     )
                     continue
                 file_full_path = os.path.join(account_path, file)
-                with open(file_full_path, "r", encoding="utf-8") as f:
+                with open(file_full_path, encoding="utf-8") as f:
                     try:
                         data = json.load(f)
                         raw_dumps[account].append(data)

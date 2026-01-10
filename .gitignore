@@ -15,3 +15,8 @@ wheels/
 # pacoli specific secrets
 token.json
 raw/
+
+# Tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/

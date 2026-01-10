@@ -16,3 +16,37 @@ dependencies = [
     "python-dotenv[cli]>=1.1.0",
     "qrcode[pil]>=8.1",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "ruff>=0.14.11",
+    "types-requests>=2.32.4.20260107",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = []
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["pandas.*", "plotly.*", "polars.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = [
+    "tests",
+]
