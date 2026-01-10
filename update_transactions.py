@@ -3,6 +3,7 @@ import datetime
 import logging
 from go_cardless_client import Client
 from read_existing_transactions import read_existing_transactions
+import os
 
 
 # helps w/ debugging
@@ -46,6 +47,8 @@ for account, max_date in max_dates.items():
                     "date_to": yesterday_str,
                 },
             )
+            if not dump:
+                raise ValueError()
             logging.getLogger().info(
                 f"Downloaded {len(dump['transactions']['booked'])} transaction(s) for {account} from {max_date} to {yesterday_str}."
             )
@@ -55,3 +58,6 @@ for account, max_date in max_dates.items():
             f"File {yesterday_str} already exists for {account}. Skipping."
         )
         continue
+    except ValueError:
+        # delete the file if it was created but empty
+        os.remove("raw/" + account + "/" + yesterday_str + ".json")
