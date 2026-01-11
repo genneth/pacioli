@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from datetime import date
 from typing import Any
 
 import polars as pl
@@ -313,10 +314,20 @@ class TransactionManager:
             for tx in txs:
                 # Basic flattening (you might want to customize this based on what you
                 # need)
+                booking_date_str = tx.get("bookingDate")
+                try:
+                    booking_date = (
+                        date.fromisoformat(booking_date_str)
+                        if booking_date_str
+                        else None
+                    )
+                except ValueError:
+                    booking_date = None
+
                 flat_tx = {
                     "account": account_id,
                     "id": tx.get("internalTransactionId"),
-                    "bookingDate": tx.get("bookingDate"),
+                    "bookingDate": booking_date,
                     "amount": float(tx.get("transactionAmount", {}).get("amount", 0)),
                     "currency": tx.get("transactionAmount", {}).get("currency"),
                     "counterparty": self._get_counterparty(tx),

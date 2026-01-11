@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from dataclasses import asdict, dataclass
+from datetime import date
 from typing import Any
 
 import polars as pl
@@ -115,7 +116,7 @@ def read_existing_transactions() -> dict[str, list[dict]]:
 class TransactionRow:
     account: str
     id: str
-    bookingDate: str
+    bookingDate: date
     amount: float
     currency: str
     counterparty: str
@@ -169,7 +170,20 @@ def flatten_transactions(transactions_dict: dict[str, list[dict]]) -> pl.DataFra
                 # Should be handled by read_existing_transactions but good to be safe
                 continue
 
-            booking_date = tx.get("bookingDate")
+            booking_date_str = tx.get("bookingDate")
+            try:
+                booking_date = (
+                    date.fromisoformat(booking_date_str) if booking_date_str else None
+                )
+            except ValueError:
+                logging.getLogger().error(
+                    f"Invalid date format for transaction {internal_id}: "
+                    f"{booking_date_str}"
+                )
+                booking_date = None
+
+            if not booking_date:
+                continue
 
             # Handle amount safely
             amount_dict = tx.get("transactionAmount", {})
@@ -203,7 +217,7 @@ def flatten_transactions(transactions_dict: dict[str, list[dict]]) -> pl.DataFra
             row = TransactionRow(
                 account=account_id,
                 id=internal_id,
-                bookingDate=booking_date,  # type: ignore
+                bookingDate=booking_date,
                 amount=amount,
                 currency=currency,
                 counterparty=counterparty,
@@ -218,7 +232,7 @@ def flatten_transactions(transactions_dict: dict[str, list[dict]]) -> pl.DataFra
             schema={
                 "account": pl.Utf8,
                 "id": pl.Utf8,
-                "bookingDate": pl.Utf8,
+                "bookingDate": pl.Date,
                 "amount": pl.Float64,
                 "currency": pl.Utf8,
                 "counterparty": pl.Utf8,
