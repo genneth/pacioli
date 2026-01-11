@@ -23,6 +23,10 @@ def test_enrich_transactions_remittance_is_list():
     # enrich
     df = tm.enrich_transactions(raw_txs)
     
+    assert "counterparty" in df.columns
+    assert "creditorName" not in df.columns
+    assert df.select(C.counterparty).item(0, 0) == "Test Creditor"
+    
     # check remittance type
     remittance_val = df.select(C.remittance).item(0, 0)
     

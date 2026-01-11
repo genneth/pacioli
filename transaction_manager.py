@@ -69,6 +69,17 @@ class TransactionManager:
         with open(CACHE_FILE, "w") as f:
             json.dump(self.llm_cache, f, indent=2)
 
+    def _get_counterparty(self, tx: dict[str, Any]) -> str:
+        """
+        Extracts the counterparty from the transaction, merging creditor and debtor
+        information if necessary.
+        """
+        creditor = tx.get("creditorName")
+        debtor = tx.get("debtorName")
+        if creditor and debtor:
+            return f"FROM {debtor} TO {creditor}"
+        return creditor or debtor or ""
+
     def resolve_transaction(self, tx: dict[str, Any]) -> dict[str, Any]:
         """
         Resolves a single transaction against Manual, Patterns, and Cache.
@@ -105,8 +116,8 @@ class TransactionManager:
             pass
 
         # 2. Check Patterns
-        # Fields to check: creditorName, remittanceInformationUnstructuredArray
-        creditor = tx.get("creditorName", "") or ""
+        # Fields to check: counterparty, remittanceInformationUnstructuredArray
+        counterparty = self._get_counterparty(tx)
         remittance = " ".join(
             tx.get("remittanceInformationUnstructuredArray", []) or []
         )
@@ -114,15 +125,15 @@ class TransactionManager:
         pattern_matches = []
         for pattern in self.patterns:
             p_str = pattern.get("pattern", "")
-            p_field = pattern.get("field", "creditorName")
+            p_field = pattern.get("field", "counterparty")
 
             target_text = ""
-            if p_field == "creditorName":
-                target_text = creditor
+            if p_field == "counterparty":
+                target_text = counterparty
             elif p_field == "remittance":
                 target_text = remittance
             elif p_field == "any":
-                target_text = f"{creditor} {remittance}"
+                target_text = f"{counterparty} {remittance}"
 
             if re.search(p_str, target_text, re.IGNORECASE):
                 pattern_matches.append(
@@ -215,7 +226,7 @@ class TransactionManager:
                     "bookingDate": tx.get("bookingDate"),
                     "amount": float(tx.get("transactionAmount", {}).get("amount", 0)),
                     "currency": tx.get("transactionAmount", {}).get("currency"),
-                    "creditorName": tx.get("creditorName"),
+                    "counterparty": self._get_counterparty(tx),
                     "remittance": tx.get("remittanceInformationUnstructuredArray", []) or [],
                 }
 
@@ -227,6 +238,7 @@ class TransactionManager:
                     "bookingDate",
                     "transactionAmount",
                     "creditorName",
+                    "debtorName",
                     "remittanceInformationUnstructuredArray",
                 ]:
                     unmapped.pop(k, None)
@@ -295,13 +307,13 @@ class TransactionManager:
         tx_list_str = ""
         for tx in tx_chunk:
             tx_id = tx.get("internalTransactionId")
-            creditor = tx.get("creditorName", "Unknown")
+            counterparty = self._get_counterparty(tx) or "Unknown"
             remittance = " ".join(
                 tx.get("remittanceInformationUnstructuredArray", []) or []
             )
             amount = tx.get("transactionAmount", {}).get("amount", "0")
             date = tx.get("bookingDate", "")
-            tx_list_str += f"ID: {tx_id} | Date: {date} | Amount: {amount} | Creditor: {creditor} | Remittance: {remittance}\n"
+            tx_list_str += f"ID: {tx_id} | Date: {date} | Amount: {amount} | Counterparty: {counterparty} | Remittance: {remittance}\n"
 
         categories_str = "\n".join(self.categories)
 
@@ -368,7 +380,7 @@ Transactions:
         pattern: str,
         clean_name: str,
         category: str,
-        field: str = "creditorName",
+        field: str = "counterparty",
     ):
         """Add a regex pattern."""
         self.patterns.append(
