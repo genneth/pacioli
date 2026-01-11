@@ -1,6 +1,10 @@
 import json
 import logging
 import os
+from dataclasses import asdict, dataclass
+from typing import Any
+
+import polars as pl
 
 
 ### Read existing transactions from raw
@@ -105,3 +109,129 @@ def read_existing_transactions() -> dict[str, list[dict]]:
         per_account_transactions[account] = unique_transactions
 
     return per_account_transactions
+
+
+@dataclass
+class TransactionRow:
+    account_id: str
+    internalTransactionId: str
+    bookingDate: str
+    amount: float
+    currency: str
+    counterparty: str
+    remittance: str
+    unmapped_data: str
+
+
+def _get_counterparty(tx: dict[str, Any]) -> str:
+    """
+    Extracts the counterparty from the transaction, merging creditor and debtor
+    information if necessary.
+    """
+    creditor = tx.get("creditorName")
+    debtor = tx.get("debtorName")
+    if creditor and debtor:
+        return f"FROM {debtor} TO {creditor}"
+    return creditor or debtor or ""
+
+
+def _get_remittance(tx: dict[str, Any]) -> str:
+    """
+    Extracts and normalizes remittance information.
+    """
+    unstructured = tx.get("remittanceInformationUnstructured")
+    unstructured_array = tx.get("remittanceInformationUnstructuredArray")
+
+    if unstructured and unstructured_array:
+        logging.warning(
+            f"Transaction {tx.get('internalTransactionId')} has both "
+            "'remittanceInformationUnstructured' and "
+            "'remittanceInformationUnstructuredArray'."
+        )
+
+    if unstructured_array:
+        return "\n".join(unstructured_array)
+    if unstructured:
+        return str(unstructured)
+    return ""
+
+
+def flatten_transactions(transactions_dict: dict[str, list[dict]]) -> pl.DataFrame:
+    """
+    Flattens the dictionary of transactions into a Polars DataFrame.
+    """
+    all_rows = []
+    for account_id, txs in transactions_dict.items():
+        for tx in txs:
+            # Extract basic fields
+            internal_id = tx.get("internalTransactionId")
+            if not internal_id:
+                # Should be handled by read_existing_transactions but good to be safe
+                continue
+
+            booking_date = tx.get("bookingDate")
+
+            # Handle amount safely
+            amount_dict = tx.get("transactionAmount", {})
+            try:
+                amount = float(amount_dict.get("amount", 0))
+            except (ValueError, TypeError):
+                amount = 0.0
+
+            currency = amount_dict.get("currency", "")
+
+            counterparty = _get_counterparty(tx)
+            remittance = _get_remittance(tx)
+
+            # Capture unmapped data
+            # Create a copy to remove mapped fields
+            unmapped = tx.copy()
+            mapped_keys = [
+                "internalTransactionId",
+                "bookingDate",
+                "transactionAmount",
+                "creditorName",
+                "debtorName",
+                "remittanceInformationUnstructuredArray",
+                "remittanceInformationUnstructured",
+            ]
+            for k in mapped_keys:
+                unmapped.pop(k, None)
+
+            unmapped_json = json.dumps(unmapped)
+
+            row = TransactionRow(
+                account_id=account_id,
+                internalTransactionId=internal_id,
+                bookingDate=booking_date,  # type: ignore
+                amount=amount,
+                currency=currency,
+                counterparty=counterparty,
+                remittance=remittance,
+                unmapped_data=unmapped_json,
+            )
+            all_rows.append(asdict(row))
+
+    if not all_rows:
+        return pl.DataFrame(
+            [],
+            schema={
+                "account_id": pl.Utf8,
+                "internalTransactionId": pl.Utf8,
+                "bookingDate": pl.Utf8,
+                "amount": pl.Float64,
+                "currency": pl.Utf8,
+                "counterparty": pl.Utf8,
+                "remittance": pl.Utf8,
+                "unmapped_data": pl.Utf8,
+            },
+        )
+
+    return pl.DataFrame(all_rows)
+
+
+def get_transactions_df() -> pl.DataFrame:
+    """
+    Reads existing transactions and returns them as a flattened DataFrame.
+    """
+    return flatten_transactions(read_existing_transactions())
