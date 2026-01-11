@@ -138,8 +138,8 @@ class Client:
         self.institutions = pl.from_dicts(
             response, infer_schema_length=None
         ).with_columns(
-            C("transaction_total_days").cast(pl.Int32),
-            C("max_access_valid_for_days").cast(pl.Int32),
+            C.transaction_total_days.cast(pl.Int32),
+            C.max_access_valid_for_days.cast(pl.Int32),
         )
         return True
 

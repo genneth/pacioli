@@ -1,0 +1,391 @@
+import json
+import logging
+import os
+import re
+from typing import Any
+
+import polars as pl
+from polars import col as C
+from openai import OpenAI
+from pydantic import BaseModel
+
+# Paths
+DATA_DIR = "data"
+MANUAL_ASSIGNMENTS_FILE = os.path.join(DATA_DIR, "manual_assignments.json")
+PATTERNS_FILE = os.path.join(DATA_DIR, "patterns.json")
+CATEGORIES_FILE = os.path.join(DATA_DIR, "categories.json")
+CACHE_FILE = os.path.join(DATA_DIR, "llm_cache.json")
+
+
+class TransactionResult(BaseModel):
+    internalTransactionId: str
+    clean_name: str
+    category: str
+
+
+class CategorizationResponse(BaseModel):
+    transactions: list[TransactionResult]
+
+
+class TransactionManager:
+    def __init__(self, oai_client: OpenAI | None = None):
+        self.oai = oai_client
+        self.manual_assignments: dict[str, dict[str, str]] = {}
+        self.patterns: list[dict[str, str]] = []
+        self.categories: list[str] = []
+        self.llm_cache: dict[str, dict[str, str]] = {}
+
+        self.load_data()
+
+    def load_data(self):
+        """Loads all configuration and data files."""
+        if os.path.exists(MANUAL_ASSIGNMENTS_FILE):
+            with open(MANUAL_ASSIGNMENTS_FILE) as f:
+                self.manual_assignments = json.load(f)
+
+        if os.path.exists(PATTERNS_FILE):
+            with open(PATTERNS_FILE) as f:
+                self.patterns = json.load(f)
+
+        if os.path.exists(CATEGORIES_FILE):
+            with open(CATEGORIES_FILE) as f:
+                self.categories = json.load(f)
+
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE) as f:
+                self.llm_cache = json.load(f)
+
+    def save_data(self):
+        """Saves all configuration and data files."""
+        with open(MANUAL_ASSIGNMENTS_FILE, "w") as f:
+            json.dump(self.manual_assignments, f, indent=2)
+
+        with open(PATTERNS_FILE, "w") as f:
+            json.dump(self.patterns, f, indent=2)
+
+        with open(CATEGORIES_FILE, "w") as f:
+            json.dump(self.categories, f, indent=2)
+
+        with open(CACHE_FILE, "w") as f:
+            json.dump(self.llm_cache, f, indent=2)
+
+    def resolve_transaction(self, tx: dict[str, Any]) -> dict[str, Any]:
+        """
+        Resolves a single transaction against Manual, Patterns, and Cache.
+        Returns the enrichment data (clean_name, category, source, confidence).
+        Checks for overlaps and logs warnings.
+        """
+        tx_id = tx.get("internalTransactionId")
+        if not tx_id:
+            return {}
+
+        matches = {}  # source -> result
+
+        # 1. Check Manual Assignments
+        if tx_id in self.manual_assignments:
+            assign = self.manual_assignments[tx_id]
+            matches["MANUAL"] = {
+                "clean_name": assign.get("clean_name"),
+                "category": assign.get("category"),
+                "source": "MANUAL",
+                "confidence": 1.0,
+            }
+
+        # Check for Zero Amount
+        try:
+            amount = float(tx.get("transactionAmount", {}).get("amount", 0))
+            if amount == 0:
+                matches["ZERO_AMOUNT"] = {
+                    "clean_name": "Zero Amount",
+                    "category": "Excluded",
+                    "source": "ZERO_AMOUNT",
+                    "confidence": 1.0,
+                }
+        except (ValueError, TypeError):
+            pass
+
+        # 2. Check Patterns
+        # Fields to check: creditorName, remittanceInformationUnstructuredArray
+        creditor = tx.get("creditorName", "") or ""
+        remittance = " ".join(
+            tx.get("remittanceInformationUnstructuredArray", []) or []
+        )
+
+        pattern_matches = []
+        for pattern in self.patterns:
+            p_str = pattern.get("pattern", "")
+            p_field = pattern.get("field", "creditorName")
+
+            target_text = ""
+            if p_field == "creditorName":
+                target_text = creditor
+            elif p_field == "remittance":
+                target_text = remittance
+            elif p_field == "any":
+                target_text = f"{creditor} {remittance}"
+
+            if re.search(p_str, target_text, re.IGNORECASE):
+                pattern_matches.append(
+                    {
+                        "clean_name": pattern.get("clean_name"),
+                        "category": pattern.get("category"),
+                        "source": "PATTERN",
+                        "confidence": 0.9,
+                        "pattern_matched": p_str,
+                    }
+                )
+
+        if pattern_matches:
+            if len(pattern_matches) > 1:
+                matched_pats = [m["pattern_matched"] for m in pattern_matches]
+                logging.warning(
+                    f"Transaction {tx_id} matched multiple patterns: {matched_pats}. Using the first one."
+                )
+
+            matches["PATTERN"] = pattern_matches[0]
+
+        # 3. Check LLM Cache
+        if tx_id in self.llm_cache:
+            cached = self.llm_cache[tx_id]
+            matches["AI_CACHED"] = {
+                "clean_name": cached.get("clean_name"),
+                "category": cached.get("category"),
+                "source": "AI_CACHED",
+                "confidence": cached.get("confidence", 0.7),
+            }
+
+        # --- Hierarchy & Overlap Warnings ---
+
+        final_result = {
+            "clean_name": None,
+            "category": None,
+            "source": None,
+            "confidence": 0.0,
+        }
+
+        # Priority 1: Manual
+        if "MANUAL" in matches:
+            final_result = matches["MANUAL"]
+            if "PATTERN" in matches:
+                logging.info(
+                    f"Transaction {tx_id}: Manual assignment overrides Pattern match '{matches['PATTERN'].get('pattern_matched')}'"
+                )
+            if "AI_CACHED" in matches:
+                logging.info(
+                    f"Transaction {tx_id}: Manual assignment overrides AI Cache"
+                )
+
+        # Priority 2: Zero Amount
+        elif "ZERO_AMOUNT" in matches:
+            final_result = matches["ZERO_AMOUNT"]
+
+        # Priority 3: Pattern
+        elif "PATTERN" in matches:
+            final_result = matches["PATTERN"]
+            if "AI_CACHED" in matches:
+                logging.info(f"Transaction {tx_id}: Pattern match overrides AI Cache")
+
+        # Priority 4: Cache
+        elif "AI_CACHED" in matches:
+            final_result = matches["AI_CACHED"]
+
+        # Clean up temporary field
+        if "pattern_matched" in final_result:
+            del final_result["pattern_matched"]
+
+        return final_result
+
+    def enrich_transactions(
+        self,
+        transactions_dict: dict[str, list[dict]],
+    ) -> pl.DataFrame:
+        """
+        Takes the dict output of read_existing_transactions and returns a flat Polars
+        DataFrame with enrichment columns.
+        """
+        all_txs = []
+        for account_id, txs in transactions_dict.items():
+            for tx in txs:
+                # Basic flattening (you might want to customize this based on what you
+                # need)
+                flat_tx = {
+                    "account_id": account_id,
+                    "internalTransactionId": tx.get("internalTransactionId"),
+                    "transactionId": tx.get("transactionId"),
+                    "bookingDate": tx.get("bookingDate"),
+                    "amount": float(tx.get("transactionAmount", {}).get("amount", 0)),
+                    "currency": tx.get("transactionAmount", {}).get("currency"),
+                    "creditorName": tx.get("creditorName"),
+                    "remittance": tx.get("remittanceInformationUnstructuredArray", []) or [],
+                }
+
+                # Capture unmapped data
+                unmapped = tx.copy()
+                for k in [
+                    "internalTransactionId",
+                    "transactionId",
+                    "bookingDate",
+                    "transactionAmount",
+                    "creditorName",
+                    "remittanceInformationUnstructuredArray",
+                ]:
+                    unmapped.pop(k, None)
+
+                flat_tx["unmapped_data"] = json.dumps(unmapped)
+
+                # Apply resolution
+                enrichment = self.resolve_transaction(tx)
+                flat_tx.update(enrichment)
+
+                all_txs.append(flat_tx)
+
+        return pl.DataFrame(all_txs)
+
+    def batch_process_llm(
+        self,
+        transactions_dict: dict[str, list[dict]],
+        force_update=False,
+    ):
+        """
+        Identifies unlabelled transactions and queries OpenAI.
+        Updates the cache and saves.
+        """
+        if not self.oai:
+            logging.warning("No OpenAI client provided.")
+            return
+
+        to_process = []
+
+        # Gather transactions that need processing
+        for _account_id, txs in transactions_dict.items():
+            for tx in txs:
+                tx_id = tx.get("internalTransactionId")
+                if not tx_id:
+                    continue
+
+                # Skip if already in manual or pattern matched (logic repeated to
+                # ensure we don't pay for resolved ones)
+                res = self.resolve_transaction(tx)
+                if res["source"] in ["MANUAL", "PATTERN", "ZERO_AMOUNT"]:
+                    continue
+
+                if not force_update and res["source"] == "AI_CACHED":
+                    continue
+
+                to_process.append(tx)
+
+        if not to_process:
+            logging.info("No new transactions to process with LLM.")
+            return
+
+        logging.info(f"Sending {len(to_process)} transactions to LLM...")
+
+        # Chunking to avoid context limits
+        chunk_size = 50
+        for i in range(0, len(to_process), chunk_size):
+            chunk = to_process[i : i + chunk_size]
+            self._query_llm_chunk(chunk)
+            self.save_data()  # Save incrementally
+
+    def _query_llm_chunk(self, tx_chunk: list[dict]):
+        """
+        Helper to query OpenAI for a chunk of transactions.
+        """
+        # Prepare prompt
+        tx_list_str = ""
+        for tx in tx_chunk:
+            tx_id = tx.get("internalTransactionId")
+            creditor = tx.get("creditorName", "Unknown")
+            remittance = " ".join(
+                tx.get("remittanceInformationUnstructuredArray", []) or []
+            )
+            amount = tx.get("transactionAmount", {}).get("amount", "0")
+            date = tx.get("bookingDate", "")
+            tx_list_str += f"ID: {tx_id} | Date: {date} | Amount: {amount} | Creditor: {creditor} | Remittance: {remittance}\n"
+
+        categories_str = "\n".join(self.categories)
+
+        prompt = f"""
+You are a financial assistant.
+Categorize the following transactions and provide a clean merchant name.
+Use ONLY the provided categories. If none fit perfectly, use the best available or "Uncategorized".
+
+Categories:
+{categories_str}
+
+Transactions:
+{tx_list_str}
+"""
+
+        try:
+            response = self.oai.beta.chat.completions.parse(
+                model="gpt-5.2-chat-latest",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful financial categorization assistant.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                response_format=CategorizationResponse,
+            )
+
+            result: CategorizationResponse = response.choices[0].message.parsed
+
+            if not result or not result.transactions:
+                logging.error("Empty or invalid response from LLM")
+                return
+
+            for item in result.transactions:
+                # Validate category is in our allowed list, fallback if LLM hallucinated
+                category = item.category
+                if category not in self.categories and category != "Uncategorized":
+                    # Simple fuzzy match fallback or default could go here
+                    # For now, just keep what LLM gave but warn
+                    logging.warning(
+                        f"LLM returned unknown category '{category}' for {item.internalTransactionId}"
+                    )
+
+                self.llm_cache[item.internalTransactionId] = {
+                    "clean_name": item.clean_name,
+                    "category": category,
+                    "confidence": 0.8,  # arbitrary confidence for LLM
+                }
+
+        except Exception as e:
+            logging.error(f"Error querying LLM: {e}")
+
+    def update_manual(self, tx_id: str, clean_name: str, category: str):
+        """Manually verify/update a transaction."""
+        self.manual_assignments[tx_id] = {
+            "clean_name": clean_name,
+            "category": category,
+        }
+        self.save_data()
+
+    def add_pattern(
+        self,
+        pattern: str,
+        clean_name: str,
+        category: str,
+        field: str = "creditorName",
+    ):
+        """Add a regex pattern."""
+        self.patterns.append(
+            {
+                "pattern": pattern,
+                "field": field,
+                "clean_name": clean_name,
+                "category": category,
+            }
+        )
+        self.save_data()
+
+    def add_category(self, category: str):
+        """Add a new category if it doesn't exist."""
+        if category not in self.categories:
+            self.categories.append(category)
+            self.save_data()
+
+    def get_summary(self, df: pl.DataFrame):
+        return df.group_by(C.source).len()
