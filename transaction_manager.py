@@ -100,7 +100,7 @@ class TransactionManager:
             )
 
         if unstructured_array:
-            return " ".join(unstructured_array)
+            return "\n".join(unstructured_array)
         if unstructured:
             return str(unstructured)
         return ""
