@@ -1,7 +1,5 @@
 import json
 
-import polars as pl
-
 from read_existing_transactions import (
     _get_counterparty,
     _get_remittance,
@@ -66,31 +64,30 @@ def test_flatten_transactions_structure():
         ],
         "acc2": [],  # Empty account
     }
-    df = flatten_transactions(raw_txs)
+    rows = flatten_transactions(raw_txs)
 
-    assert isinstance(df, pl.DataFrame)
-    assert df.height == 2
+    assert isinstance(rows, list)
+    assert len(rows) == 2
 
     # Check Row 1
-    row1 = df.filter(pl.col("id") == "tx1").row(0, named=True)
-    assert row1["account"] == "acc1"
-    assert row1["amount"] == 10.0
-    assert row1["currency"] == "USD"
-    assert row1["counterparty"] == "Test Creditor"
+    row1 = next(r for r in rows if r.id == "tx1")
+    assert row1.account == "acc1"
+    assert row1.amount == 10.0
+    assert row1.currency == "USD"
+    assert row1.counterparty == "Test Creditor"
 
-    unmapped1 = json.loads(row1["unmapped"])
+    unmapped1 = json.loads(row1.unmapped)
     assert "extraField" in unmapped1
     assert unmapped1["extraField"] == "extraValue"
     assert "internalTransactionId" not in unmapped1
 
     # Check Row 2
-    row2 = df.filter(pl.col("id") == "tx2").row(0, named=True)
-    assert row2["amount"] == 0.0  # Default
-    assert row2["counterparty"] == "Test Debtor"
+    row2 = next(r for r in rows if r.id == "tx2")
+    assert row2.amount == 0.0  # Default
+    assert row2.counterparty == "Test Debtor"
 
 
 def test_flatten_empty():
-    df = flatten_transactions({})
-    assert isinstance(df, pl.DataFrame)
-    assert df.height == 0
-    assert "unmapped" in df.columns
+    rows = flatten_transactions({})
+    assert isinstance(rows, list)
+    assert len(rows) == 0

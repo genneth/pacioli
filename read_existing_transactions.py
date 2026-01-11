@@ -1,11 +1,9 @@
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
-
-import polars as pl
 
 
 ### Read existing transactions from raw
@@ -157,9 +155,11 @@ def _get_remittance(tx: dict[str, Any]) -> str:
     return ""
 
 
-def flatten_transactions(transactions_dict: dict[str, list[dict]]) -> pl.DataFrame:
+def flatten_transactions(
+    transactions_dict: dict[str, list[dict]],
+) -> list[TransactionRow]:
     """
-    Flattens the dictionary of transactions into a Polars DataFrame.
+    Flattens the dictionary of transactions into a list of TransactionRow objects.
     """
     all_rows = []
     for account_id, txs in transactions_dict.items():
@@ -224,21 +224,6 @@ def flatten_transactions(transactions_dict: dict[str, list[dict]]) -> pl.DataFra
                 remittance=remittance,
                 unmapped=unmapped_json,
             )
-            all_rows.append(asdict(row))
+            all_rows.append(row)
 
-    if not all_rows:
-        return pl.DataFrame(
-            [],
-            schema={
-                "account": pl.Utf8,
-                "id": pl.Utf8,
-                "bookingDate": pl.Date,
-                "amount": pl.Float64,
-                "currency": pl.Utf8,
-                "counterparty": pl.Utf8,
-                "remittance": pl.Utf8,
-                "unmapped": pl.Utf8,
-            },
-        )
-
-    return pl.DataFrame(all_rows)
+    return all_rows
