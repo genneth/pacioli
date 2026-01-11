@@ -317,7 +317,6 @@ class TransactionManager:
                 flat_tx = {
                     "account_id": account_id,
                     "internalTransactionId": tx.get("internalTransactionId"),
-                    "transactionId": tx.get("transactionId"),
                     "bookingDate": tx.get("bookingDate"),
                     "amount": float(tx.get("transactionAmount", {}).get("amount", 0)),
                     "currency": tx.get("transactionAmount", {}).get("currency"),
@@ -329,7 +328,6 @@ class TransactionManager:
                 unmapped = tx.copy()
                 for k in [
                     "internalTransactionId",
-                    "transactionId",
                     "bookingDate",
                     "transactionAmount",
                     "creditorName",
