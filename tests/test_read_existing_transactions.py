@@ -72,19 +72,19 @@ def test_flatten_transactions_structure():
     assert df.height == 2
 
     # Check Row 1
-    row1 = df.filter(pl.col("internalTransactionId") == "tx1").row(0, named=True)
-    assert row1["account_id"] == "acc1"
+    row1 = df.filter(pl.col("id") == "tx1").row(0, named=True)
+    assert row1["account"] == "acc1"
     assert row1["amount"] == 10.0
     assert row1["currency"] == "USD"
     assert row1["counterparty"] == "Test Creditor"
 
-    unmapped1 = json.loads(row1["unmapped_data"])
+    unmapped1 = json.loads(row1["unmapped"])
     assert "extraField" in unmapped1
     assert unmapped1["extraField"] == "extraValue"
     assert "internalTransactionId" not in unmapped1
 
     # Check Row 2
-    row2 = df.filter(pl.col("internalTransactionId") == "tx2").row(0, named=True)
+    row2 = df.filter(pl.col("id") == "tx2").row(0, named=True)
     assert row2["amount"] == 0.0  # Default
     assert row2["counterparty"] == "Test Debtor"
 
@@ -93,4 +93,4 @@ def test_flatten_empty():
     df = flatten_transactions({})
     assert isinstance(df, pl.DataFrame)
     assert df.height == 0
-    assert "unmapped_data" in df.columns
+    assert "unmapped" in df.columns

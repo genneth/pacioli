@@ -17,7 +17,7 @@ CACHE_FILE = os.path.join(DATA_DIR, "llm_cache.json")
 
 
 class TransactionResult(BaseModel):
-    internalTransactionId: str
+    id: str
     clean_name: str
     category: str
 
@@ -314,8 +314,8 @@ class TransactionManager:
                 # Basic flattening (you might want to customize this based on what you
                 # need)
                 flat_tx = {
-                    "account_id": account_id,
-                    "internalTransactionId": tx.get("internalTransactionId"),
+                    "account": account_id,
+                    "id": tx.get("internalTransactionId"),
                     "bookingDate": tx.get("bookingDate"),
                     "amount": float(tx.get("transactionAmount", {}).get("amount", 0)),
                     "currency": tx.get("transactionAmount", {}).get("currency"),
@@ -336,7 +336,7 @@ class TransactionManager:
                 ]:
                     unmapped.pop(k, None)
 
-                flat_tx["unmapped_data"] = json.dumps(unmapped)
+                flat_tx["unmapped"] = json.dumps(unmapped)
 
                 # Apply resolution
                 enrichment = self.resolve_transaction(tx)
@@ -455,10 +455,10 @@ Transactions:
                     # For now, just keep what LLM gave but warn
                     logging.warning(
                         f"LLM returned unknown category '{category}' for "
-                        f"{item.internalTransactionId}"
+                        f"{item.id}"
                     )
 
-                self.llm_cache[item.internalTransactionId] = {
+                self.llm_cache[item.id] = {
                     "clean_name": item.clean_name,
                     "category": category,
                     "confidence": 0.8,  # arbitrary confidence for LLM

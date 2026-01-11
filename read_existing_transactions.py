@@ -113,14 +113,14 @@ def read_existing_transactions() -> dict[str, list[dict]]:
 
 @dataclass
 class TransactionRow:
-    account_id: str
-    internalTransactionId: str
+    account: str
+    id: str
     bookingDate: str
     amount: float
     currency: str
     counterparty: str
     remittance: str
-    unmapped_data: str
+    unmapped: str
 
 
 def _get_counterparty(tx: dict[str, Any]) -> str:
@@ -201,14 +201,14 @@ def flatten_transactions(transactions_dict: dict[str, list[dict]]) -> pl.DataFra
             unmapped_json = json.dumps(unmapped)
 
             row = TransactionRow(
-                account_id=account_id,
-                internalTransactionId=internal_id,
+                account=account_id,
+                id=internal_id,
                 bookingDate=booking_date,  # type: ignore
                 amount=amount,
                 currency=currency,
                 counterparty=counterparty,
                 remittance=remittance,
-                unmapped_data=unmapped_json,
+                unmapped=unmapped_json,
             )
             all_rows.append(asdict(row))
 
@@ -216,14 +216,14 @@ def flatten_transactions(transactions_dict: dict[str, list[dict]]) -> pl.DataFra
         return pl.DataFrame(
             [],
             schema={
-                "account_id": pl.Utf8,
-                "internalTransactionId": pl.Utf8,
+                "account": pl.Utf8,
+                "id": pl.Utf8,
                 "bookingDate": pl.Utf8,
                 "amount": pl.Float64,
                 "currency": pl.Utf8,
                 "counterparty": pl.Utf8,
                 "remittance": pl.Utf8,
-                "unmapped_data": pl.Utf8,
+                "unmapped": pl.Utf8,
             },
         )
 
