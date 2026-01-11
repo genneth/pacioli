@@ -270,8 +270,31 @@ class TransactionManager:
             # Basic flattening
             flat_tx = asdict(tx)
 
-            # Deduplicate remittance if it matches counterparty
-            if flat_tx["counterparty"] == flat_tx["remittance"]:
+            # Deduplicate and consolidate counterparty/remittance
+            cp = flat_tx.get("counterparty")
+            rm = flat_tx.get("remittance")
+
+            if cp and rm:
+                # Both present: check substring
+                if cp in rm:
+                    flat_tx["counterparty"] = rm
+                    flat_tx["remittance"] = None
+                elif rm in cp:
+                    flat_tx["counterparty"] = cp
+                    flat_tx["remittance"] = None
+            elif not cp and rm:
+                # Counterparty missing, use remittance
+                flat_tx["counterparty"] = rm
+                flat_tx["remittance"] = None
+            elif cp and not rm:
+                # Remittance missing, ensure it's None for consistency
+                flat_tx["remittance"] = None
+            else:
+                # Both missing
+                logging.warning(
+                    f"Transaction {tx.id} has no counterparty or remittance data."
+                )
+                flat_tx["counterparty"] = None
                 flat_tx["remittance"] = None
 
             # Apply resolution
