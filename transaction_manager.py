@@ -262,22 +262,14 @@ class TransactionManager:
         transactions: list[Transaction],
     ) -> pl.DataFrame:
         """
-        Takes a list of Transactions and returns a flat Polars DataFrame with enrichment columns.
+        Takes a list of Transactions and returns a flat Polars DataFrame with
+        enrichment columns.
         """
         all_txs = []
         for tx in transactions:
             # Basic flattening
             flat_tx = asdict(tx)
-            
-            # Remove mapped fields from flat_tx if you want (Transaction asdict already gives flat structure)
-            # but we need to rename some keys if we want consistency with old schema?
-            # Old schema: account, id, bookingDate, amount, currency, counterparty, remittance, unmapped
-            # New Transaction class: account_id, id, booking_date, amount, currency, counterparty, remittance, unmapped
-            
-            # Renaming for consistency with Polars naming conventions or old conventions
-            flat_tx["account"] = flat_tx.pop("account_id")
-            flat_tx["bookingDate"] = flat_tx.pop("booking_date")
-            
+
             # Apply resolution
             enrichment = self.resolve_transaction(tx)
             flat_tx.update(enrichment)
@@ -285,23 +277,7 @@ class TransactionManager:
             all_txs.append(flat_tx)
 
         if not all_txs:
-             return pl.DataFrame(
-                [],
-                schema={
-                    "account": pl.Utf8,
-                    "id": pl.Utf8,
-                    "bookingDate": pl.Date,
-                    "amount": pl.Float64,
-                    "currency": pl.Utf8,
-                    "counterparty": pl.Utf8,
-                    "remittance": pl.Utf8,
-                    "unmapped": pl.Utf8,
-                    "clean_name": pl.Utf8,
-                    "category": pl.Utf8,
-                    "source": pl.Utf8,
-                    "confidence": pl.Float64,
-                },
-            )
+            raise ValueError("No transactions to enrich.")
 
         return pl.DataFrame(all_txs)
 
@@ -380,7 +356,7 @@ Transactions:
 """
 
         try:
-            response = self.oai.beta.chat.completions.parse(
+            response = self.oai.chat.completions.parse(
                 model="gpt-5.2-chat-latest",
                 messages=[
                     {
@@ -404,8 +380,7 @@ Transactions:
                 category = item.category
                 if category not in self.categories and category != "Uncategorized":
                     logging.warning(
-                        f"LLM returned unknown category '{category}' for "
-                        f"{item.id}"
+                        f"LLM returned unknown category '{category}' for {item.id}"
                     )
 
                 self.llm_cache[item.id] = {
