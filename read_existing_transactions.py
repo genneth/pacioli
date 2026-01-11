@@ -228,10 +228,3 @@ def flatten_transactions(transactions_dict: dict[str, list[dict]]) -> pl.DataFra
         )
 
     return pl.DataFrame(all_rows)
-
-
-def get_transactions_df() -> pl.DataFrame:
-    """
-    Reads existing transactions and returns them as a flattened DataFrame.
-    """
-    return flatten_transactions(read_existing_transactions())

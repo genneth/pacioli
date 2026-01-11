@@ -6,7 +6,6 @@ from typing import Any
 
 import polars as pl
 from openai import OpenAI
-from polars import col as C
 from pydantic import BaseModel
 
 # Paths
@@ -499,6 +498,3 @@ Transactions:
         if category not in self.categories:
             self.categories.append(category)
             self.save_data()
-
-    def get_summary(self, df: pl.DataFrame):
-        return df.group_by(C.source).len()
