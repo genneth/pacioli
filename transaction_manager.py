@@ -33,7 +33,7 @@ class TransactionManager:
         self.manual_assignments: dict[str, dict[str, str]] = {}
         self.patterns: list[dict[str, str]] = []
         self.categories: list[str] = []
-        self.llm_cache: dict[str, dict[str, str]] = {}
+        self.llm_cache: dict[str, dict[str, Any]] = {}
 
         self.load_data()
 
@@ -80,6 +80,31 @@ class TransactionManager:
             return f"FROM {debtor} TO {creditor}"
         return creditor or debtor or ""
 
+    def _get_remittance(self, tx: dict[str, Any]) -> str:
+        """
+        Extracts and normalizes remittance information.
+
+        ASSUMPTION: No transaction has both 'remittanceInformationUnstructuredArray'
+        and 'remittanceInformationUnstructured'. Checks for this condition and
+        warns if violated.
+        """
+        unstructured = tx.get("remittanceInformationUnstructured")
+        unstructured_array = tx.get("remittanceInformationUnstructuredArray")
+
+        if unstructured and unstructured_array:
+            logging.warning(
+                f"Transaction {tx.get('internalTransactionId')} has both "
+                "'remittanceInformationUnstructured' and "
+                "'remittanceInformationUnstructuredArray'. This violates the "
+                "assumption that they are mutually exclusive."
+            )
+
+        if unstructured_array:
+            return " ".join(unstructured_array)
+        if unstructured:
+            return str(unstructured)
+        return ""
+
     def resolve_transaction(self, tx: dict[str, Any]) -> dict[str, Any]:
         """
         Resolves a single transaction against Manual, Patterns, and Cache.
@@ -116,11 +141,9 @@ class TransactionManager:
             pass
 
         # 2. Check Patterns
-        # Fields to check: counterparty, remittanceInformationUnstructuredArray
+        # Fields to check: counterparty, remittance (normalized)
         counterparty = self._get_counterparty(tx)
-        remittance = " ".join(
-            tx.get("remittanceInformationUnstructuredArray", []) or []
-        )
+        remittance = self._get_remittance(tx)
 
         pattern_matches = []
         for pattern in self.patterns:
@@ -167,7 +190,7 @@ class TransactionManager:
 
         # --- Hierarchy & Overlap Warnings ---
 
-        final_result = {
+        final_result: dict[str, Any] = {
             "clean_name": None,
             "category": None,
             "source": None,
@@ -227,8 +250,7 @@ class TransactionManager:
                     "amount": float(tx.get("transactionAmount", {}).get("amount", 0)),
                     "currency": tx.get("transactionAmount", {}).get("currency"),
                     "counterparty": self._get_counterparty(tx),
-                    "remittance": tx.get("remittanceInformationUnstructuredArray", [])
-                    or [],
+                    "remittance": self._get_remittance(tx),
                 }
 
                 # Capture unmapped data
@@ -241,6 +263,7 @@ class TransactionManager:
                     "creditorName",
                     "debtorName",
                     "remittanceInformationUnstructuredArray",
+                    "remittanceInformationUnstructured",
                 ]:
                     unmapped.pop(k, None)
 
@@ -304,14 +327,15 @@ class TransactionManager:
         """
         Helper to query OpenAI for a chunk of transactions.
         """
+        if not self.oai:
+            return
+
         # Prepare prompt
         tx_list_str = ""
         for tx in tx_chunk:
             tx_id = tx.get("internalTransactionId")
             counterparty = self._get_counterparty(tx) or "Unknown"
-            remittance = " ".join(
-                tx.get("remittanceInformationUnstructuredArray", []) or []
-            )
+            remittance = self._get_remittance(tx)
             amount = tx.get("transactionAmount", {}).get("amount", "0")
             date = tx.get("bookingDate", "")
             tx_list_str += f"ID: {tx_id} | Date: {date} | Amount: {amount} | Counterparty: {counterparty} | Remittance: {remittance}\n"
@@ -343,7 +367,7 @@ Transactions:
                 response_format=CategorizationResponse,
             )
 
-            result: CategorizationResponse = response.choices[0].message.parsed
+            result: CategorizationResponse | None = response.choices[0].message.parsed
 
             if not result or not result.transactions:
                 logging.error("Empty or invalid response from LLM")

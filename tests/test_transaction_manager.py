@@ -1,9 +1,7 @@
-import pytest
-import polars as pl
 from polars import col as C
 from transaction_manager import TransactionManager
 
-def test_enrich_transactions_remittance_is_list():
+def test_enrich_transactions_remittance_normalized():
     tm = TransactionManager()
     
     # Mock data
@@ -30,16 +28,38 @@ def test_enrich_transactions_remittance_is_list():
     # check remittance type
     remittance_val = df.select(C.remittance).item(0, 0)
     
-    # Polars might return a Series for List type cells
-    if isinstance(remittance_val, pl.Series):
-        remittance_val = remittance_val.to_list()
+    assert isinstance(remittance_val, str)
+    assert remittance_val == "part1 part2"
+
+def test_remittance_normalization_and_warning(caplog):
+    import logging
+    tm = TransactionManager()
+
+    # Case 1: Just Unstructured String
+    tx_str = {
+        "internalTransactionId": "tx_str",
+        "remittanceInformationUnstructured": "simple string"
+    }
+    assert tm._get_remittance(tx_str) == "simple string"
+
+    # Case 2: Both (should warn)
+    tx_both = {
+        "internalTransactionId": "tx_both",
+        "remittanceInformationUnstructured": "simple string",
+        "remittanceInformationUnstructuredArray": ["part1", "part2"]
+    }
     
-    assert isinstance(remittance_val, list)
-    assert remittance_val == ["part1", "part2"]
+    with caplog.at_level(logging.WARNING):
+        rem = tm._get_remittance(tx_both)
+        # It prefers array if both are present based on implementation order, 
+        # but we just want to ensure it warns.
+        assert "violates the assumption" in caplog.text
+        # Based on implementation: returns array joined
+        assert rem == "part1 part2" 
+
 
 def test_resolve_transaction_pattern_matching_with_array():
-    # Verify that pattern matching still works even though enrich_transactions returns a list,
-    # because resolve_transaction handles the join internally.
+    # Verify that pattern matching works with the normalized remittance string.
     
     tm = TransactionManager()
     # Add a pattern that matches the joined remittance
