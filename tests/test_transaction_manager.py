@@ -1,8 +1,11 @@
+import json
 import os
+from datetime import date
 
 import pytest
 from polars import col as C
 
+from transaction_loader import Transaction
 from transaction_manager import TransactionManager
 
 
@@ -10,86 +13,87 @@ from transaction_manager import TransactionManager
 def temp_data_dir(tmp_path):
     d = tmp_path / "data"
     d.mkdir()
-    # Create empty files so load_data doesn't fail if it expects them
-    # although TransactionManager handles missing files.
     return str(d)
 
 
-def test_enrich_transactions_remittance_normalized(temp_data_dir):
+def test_enrich_transactions_structure(temp_data_dir):
     tm = TransactionManager(data_dir=temp_data_dir)
 
-    # Mock data
-    raw_txs = {
-        "acc1": [
-            {
-                "internalTransactionId": "tx1",
-                "transactionId": "t1",
-                "bookingDate": "2023-01-01",
-                "transactionAmount": {"amount": "10.00", "currency": "USD"},
-                "creditorName": "Test Creditor",
-                "remittanceInformationUnstructuredArray": ["part1", "part2"],
-            }
-        ]
-    }
+    # Mock data using Transaction object
+    tx = Transaction(
+        account_id="acc1",
+        id="tx1",
+        booking_date=date(2023, 1, 1),
+        amount=10.0,
+        currency= "USD",
+        counterparty="Test Creditor",
+        remittance="part1\npart2",
+        unmapped="{}"
+    )
 
     # enrich
-    df = tm.enrich_transactions(raw_txs)
+    df = tm.enrich_transactions([tx])
 
     assert "counterparty" in df.columns
-    assert "creditorName" not in df.columns
+    assert "clean_name" in df.columns
     assert df.select(C.counterparty).item(0, 0) == "Test Creditor"
-
-    # check remittance type
-    remittance_val = df.select(C.remittance).item(0, 0)
-
-    assert isinstance(remittance_val, str)
-    assert remittance_val == "part1\npart2"  # Note: Changed to \n as per implementation
+    assert df.select(C.remittance).item(0, 0) == "part1\npart2"
 
 
-def test_remittance_normalization_and_warning(caplog, temp_data_dir):
-    import logging
-
-    tm = TransactionManager(data_dir=temp_data_dir)
-
-    # Case 1: Just Unstructured String
-    tx_str = {
-        "internalTransactionId": "tx_str",
-        "remittanceInformationUnstructured": "simple string",
-    }
-    assert tm._get_remittance(tx_str) == "simple string"
-
-    # Case 2: Both (should warn)
-    tx_both = {
-        "internalTransactionId": "tx_both",
-        "remittanceInformationUnstructured": "simple string",
-        "remittanceInformationUnstructuredArray": ["part1", "part2"],
-    }
-
-    with caplog.at_level(logging.WARNING):
-        rem = tm._get_remittance(tx_both)
-        assert "violates the assumption" in caplog.text
-        assert rem == "part1\npart2"
-
-
-def test_resolve_transaction_pattern_matching_with_array(temp_data_dir):
-    # Verify that pattern matching works with the normalized remittance string.
-
+def test_resolve_transaction_pattern_matching(temp_data_dir):
     tm = TransactionManager(data_dir=temp_data_dir)
     # Add a pattern that matches the joined remittance
     tm.add_pattern("part1\npart2", "Clean Name", "Test Category", field="remittance")
 
-    tx = {
-        "internalTransactionId": "tx1",
-        "remittanceInformationUnstructuredArray": ["part1", "part2"],
-        "transactionAmount": {"amount": "100.00", "currency": "GBP"},
-    }
+    tx = Transaction(
+        account_id="acc1",
+        id="tx1",
+        booking_date=date(2023, 1, 1),
+        amount=100.0,
+        currency="GBP",
+        counterparty="Unknown",
+        remittance="part1\npart2",
+        unmapped="{}"
+    )
 
     result = tm.resolve_transaction(tx)
 
     assert result["source"] == "PATTERN"
     assert result["clean_name"] == "Clean Name"
 
-    # Verify it didn't touch the real data/patterns.json
-    assert not os.path.exists(
-        os.path.join("data", "patterns.json.tmp")
-    )  # Just a sanity check
+
+def test_manual_override(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.update_manual("tx1", "Manual Name", "Manual Cat")
+    
+    tx = Transaction(
+        account_id="acc1",
+        id="tx1",
+        booking_date=date(2023, 1, 1),
+        amount=100.0,
+        currency="GBP",
+        counterparty="Unknown",
+        remittance="Unknown",
+        unmapped="{}"
+    )
+    
+    result = tm.resolve_transaction(tx)
+    assert result["source"] == "MANUAL"
+    assert result["clean_name"] == "Manual Name"
+
+
+def test_zero_amount(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tx = Transaction(
+        account_id="acc1",
+        id="tx_zero",
+        booking_date=date(2023, 1, 1),
+        amount=0.0,
+        currency="GBP",
+        counterparty="Unknown",
+        remittance="Unknown",
+        unmapped="{}"
+    )
+    
+    result = tm.resolve_transaction(tx)
+    assert result["source"] == "ZERO_AMOUNT"

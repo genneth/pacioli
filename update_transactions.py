@@ -24,7 +24,7 @@ import logging
 import os
 
 from go_cardless_client import Client
-from read_existing_transactions import read_existing_transactions
+from transaction_loader import load_transactions
 
 # helps w/ debugging
 logger = logging.getLogger()
@@ -41,34 +41,23 @@ logger.addHandler(stream_handler)
 client = Client()
 
 # existing data
-per_account_transactions = read_existing_transactions()
+transactions = load_transactions()
 
 max_dates = {}
-for account, tran in per_account_transactions.items():
-    if not tran:
-        continue
-    # Validate bookingDate exists before calculating max
-    for t in tran:
-        if "bookingDate" not in t:
-            logger.error(
-                f"Transaction missing bookingDate for account {account}: "
-                f"{json.dumps(t)}"
-            )
-            import sys
-
-            sys.exit(1)
-
-    max_dates[account] = max(t["bookingDate"] for t in tran)
+for t in transactions:
+    if t.account_id not in max_dates or t.booking_date > max_dates[t.account_id]:
+        max_dates[t.account_id] = t.booking_date
 
 yesterday = datetime.date.today() - datetime.timedelta(days=1)
-yesterday_str = yesterday.strftime("%Y-%m-%d")
 
 # THIS IS THE DELICATE BIT: doing this wrong could overwrite the existing data
 for account, max_date in max_dates.items():
-    if max_date >= yesterday_str:
+    if max_date >= yesterday:
         logging.getLogger().info(f"Account {account} is up to date.")
         continue
 
+    yesterday_str = yesterday.strftime("%Y-%m-%d")
+    max_date_str = max_date.strftime("%Y-%m-%d")
     file_path = "raw/" + account + "/" + yesterday_str + ".json"
     try:
         # Use exclusive creation mode ("x") to ensure we never overwrite existing data.
@@ -80,9 +69,9 @@ for account, max_date in max_dates.items():
                     # Deliberately overlap with the last known date.
                     # We do this because bank settlement times can vary, and we might
                     # have missed a transaction late in the day on the previous run.
-                    # Downstream consumers (read_existing_transactions.py) MUST handle
+                    # Downstream consumers (transaction_loader.py) MUST handle
                     # deduplication.
-                    "date_from": max_date,
+                    "date_from": max_date_str,
                     "date_to": yesterday_str,
                 },
             )

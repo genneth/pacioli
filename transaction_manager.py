@@ -2,12 +2,14 @@ import json
 import logging
 import os
 import re
-from datetime import date
+from dataclasses import asdict
 from typing import Any
 
 import polars as pl
 from openai import OpenAI
 from pydantic import BaseModel
+
+from transaction_loader import Transaction
 
 # Paths
 DATA_DIR = "data"
@@ -78,55 +80,18 @@ class TransactionManager:
         with open(self.cache_file, "w") as f:
             json.dump(self.llm_cache, f, indent=2)
 
-    def _get_counterparty(self, tx: dict[str, Any]) -> str:
-        """
-        Extracts the counterparty from the transaction, merging creditor and debtor
-        information if necessary.
-        """
-        creditor = tx.get("creditorName")
-        debtor = tx.get("debtorName")
-        if creditor and debtor:
-            return f"FROM {debtor} TO {creditor}"
-        return creditor or debtor or ""
-
-    def _get_remittance(self, tx: dict[str, Any]) -> str:
-        """
-        Extracts and normalizes remittance information.
-
-        ASSUMPTION: No transaction has both 'remittanceInformationUnstructuredArray'
-        and 'remittanceInformationUnstructured'. Checks for this condition and
-        warns if violated.
-        """
-        unstructured = tx.get("remittanceInformationUnstructured")
-        unstructured_array = tx.get("remittanceInformationUnstructuredArray")
-
-        if unstructured and unstructured_array:
-            logging.warning(
-                f"Transaction {tx.get('internalTransactionId')} has both "
-                "'remittanceInformationUnstructured' and "
-                "'remittanceInformationUnstructuredArray'. This violates the "
-                "assumption that they are mutually exclusive."
-            )
-
-        if unstructured_array:
-            return "\n".join(unstructured_array)
-        if unstructured:
-            return str(unstructured)
-        return ""
-
-    def _find_matches(self, tx: dict[str, Any]) -> dict[str, Any]:
+    def _find_matches(self, tx: Transaction) -> dict[str, Any]:
         """
         Internal method to find all possible matches for a transaction.
         """
-        tx_id = tx.get("internalTransactionId")
-        if not tx_id:
+        if not tx.id:
             return {}
 
         matches = {}  # source -> result
 
         # 1. Check Manual Assignments
-        if tx_id in self.manual_assignments:
-            assign = self.manual_assignments[tx_id]
+        if tx.id in self.manual_assignments:
+            assign = self.manual_assignments[tx.id]
             matches["MANUAL"] = {
                 "clean_name": assign.get("clean_name"),
                 "category": assign.get("category"),
@@ -135,22 +100,15 @@ class TransactionManager:
             }
 
         # Check for Zero Amount
-        try:
-            amount = float(tx.get("transactionAmount", {}).get("amount", 0))
-            if amount == 0:
-                matches["ZERO_AMOUNT"] = {
-                    "clean_name": "Zero Amount",
-                    "category": "Excluded",
-                    "source": "ZERO_AMOUNT",
-                    "confidence": 1.0,
-                }
-        except (ValueError, TypeError):
-            pass
+        if tx.amount == 0:
+            matches["ZERO_AMOUNT"] = {
+                "clean_name": "Zero Amount",
+                "category": "Excluded",
+                "source": "ZERO_AMOUNT",
+                "confidence": 1.0,
+            }
 
         # 2. Check Patterns
-        counterparty = self._get_counterparty(tx)
-        remittance = self._get_remittance(tx)
-
         pattern_matches = []
         for pattern in self.patterns:
             p_str = pattern.get("pattern", "")
@@ -158,11 +116,11 @@ class TransactionManager:
 
             target_text = ""
             if p_field == "counterparty":
-                target_text = counterparty
+                target_text = tx.counterparty
             elif p_field == "remittance":
-                target_text = remittance
+                target_text = tx.remittance
             elif p_field == "any":
-                target_text = f"{counterparty} {remittance}"
+                target_text = f"{tx.counterparty} {tx.remittance}"
 
             if re.search(p_str, target_text, re.IGNORECASE):
                 pattern_matches.append(
@@ -180,8 +138,8 @@ class TransactionManager:
             matches["_ALL_PATTERNS"] = pattern_matches
 
         # 3. Check LLM Cache
-        if tx_id in self.llm_cache:
-            cached = self.llm_cache[tx_id]
+        if tx.id in self.llm_cache:
+            cached = self.llm_cache[tx.id]
             matches["AI_CACHED"] = {
                 "clean_name": cached.get("clean_name"),
                 "category": cached.get("category"),
@@ -191,14 +149,13 @@ class TransactionManager:
 
         return matches
 
-    def resolve_transaction(self, tx: dict[str, Any]) -> dict[str, Any]:
+    def resolve_transaction(self, tx: Transaction) -> dict[str, Any]:
         """
         Resolves a single transaction against Manual, Patterns, and Cache.
         Returns the enrichment data (clean_name, category, source, confidence).
         Checks for overlaps and logs warnings.
         """
-        tx_id = tx.get("internalTransactionId")
-        if not tx_id:
+        if not tx.id:
             return {}
 
         matches = self._find_matches(tx)
@@ -209,7 +166,7 @@ class TransactionManager:
             if len(pattern_matches) > 1:
                 matched_pats = [m["pattern_matched"] for m in pattern_matches]
                 logging.warning(
-                    f"Transaction {tx_id} matched multiple patterns: {matched_pats}. "
+                    f"Transaction {tx.id} matched multiple patterns: {matched_pats}. "
                     "Using the first one."
                 )
 
@@ -227,12 +184,12 @@ class TransactionManager:
             final_result = matches["MANUAL"]
             if "PATTERN" in matches:
                 logging.info(
-                    f"Transaction {tx_id}: Manual assignment overrides Pattern match "
+                    f"Transaction {tx.id}: Manual assignment overrides Pattern match "
                     f"'{matches['PATTERN'].get('pattern_matched')}'"
                 )
             if "AI_CACHED" in matches:
                 logging.info(
-                    f"Transaction {tx_id}: Manual assignment overrides AI Cache"
+                    f"Transaction {tx.id}: Manual assignment overrides AI Cache"
                 )
 
         # Priority 2: Zero Amount
@@ -243,7 +200,7 @@ class TransactionManager:
         elif "PATTERN" in matches:
             final_result = matches["PATTERN"]
             if "AI_CACHED" in matches:
-                logging.info(f"Transaction {tx_id}: Pattern match overrides AI Cache")
+                logging.info(f"Transaction {tx.id}: Pattern match overrides AI Cache")
 
         # Priority 4: Cache
         elif "AI_CACHED" in matches:
@@ -255,24 +212,23 @@ class TransactionManager:
 
         return final_result
 
-    def explain_transaction(self, tx: dict[str, Any]) -> dict[str, Any]:
+    def explain_transaction(self, tx: Transaction) -> dict[str, Any]:
         """
         Returns a detailed diagnosis of how the transaction is resolved.
         """
         matches = self._find_matches(tx)
-
         final_result = self.resolve_transaction(tx)
 
         return {
-            "tx_id": tx.get("internalTransactionId"),
-            "counterparty": self._get_counterparty(tx),
-            "remittance": self._get_remittance(tx),
+            "tx_id": tx.id,
+            "counterparty": tx.counterparty,
+            "remittance": tx.remittance,
             "matches": matches,
             "final_result": final_result,
         }
 
     def test_pattern(
-        self, transactions: list[dict], pattern: str, field: str = "counterparty"
+        self, transactions: list[Transaction], pattern: str, field: str = "counterparty"
     ) -> list[dict]:
         """
         Tests a regex pattern against a list of transactions.
@@ -282,20 +238,20 @@ class TransactionManager:
         for tx in transactions:
             target_text = ""
             if field == "counterparty":
-                target_text = self._get_counterparty(tx)
+                target_text = tx.counterparty
             elif field == "remittance":
-                target_text = self._get_remittance(tx)
+                target_text = tx.remittance
             elif field == "any":
-                target_text = f"{self._get_counterparty(tx)} {self._get_remittance(tx)}"
+                target_text = f"{tx.counterparty} {tx.remittance}"
 
             if re.search(pattern, target_text, re.IGNORECASE):
                 matches.append(
                     {
-                        "tx_id": tx.get("internalTransactionId"),
-                        "bookingDate": tx.get("bookingDate"),
-                        "amount": tx.get("transactionAmount", {}).get("amount"),
-                        "counterparty": self._get_counterparty(tx),
-                        "remittance": self._get_remittance(tx),
+                        "tx_id": tx.id,
+                        "bookingDate": str(tx.booking_date),
+                        "amount": tx.amount,
+                        "counterparty": tx.counterparty,
+                        "remittance": tx.remittance,
                         "matched_text": target_text,
                     }
                 )
@@ -303,63 +259,55 @@ class TransactionManager:
 
     def enrich_transactions(
         self,
-        transactions_dict: dict[str, list[dict]],
+        transactions: list[Transaction],
     ) -> pl.DataFrame:
         """
-        Takes the dict output of read_existing_transactions and returns a flat Polars
-        DataFrame with enrichment columns.
+        Takes a list of Transactions and returns a flat Polars DataFrame with enrichment columns.
         """
         all_txs = []
-        for account_id, txs in transactions_dict.items():
-            for tx in txs:
-                # Basic flattening (you might want to customize this based on what you
-                # need)
-                booking_date_str = tx.get("bookingDate")
-                try:
-                    booking_date = (
-                        date.fromisoformat(booking_date_str)
-                        if booking_date_str
-                        else None
-                    )
-                except ValueError:
-                    booking_date = None
+        for tx in transactions:
+            # Basic flattening
+            flat_tx = asdict(tx)
+            
+            # Remove mapped fields from flat_tx if you want (Transaction asdict already gives flat structure)
+            # but we need to rename some keys if we want consistency with old schema?
+            # Old schema: account, id, bookingDate, amount, currency, counterparty, remittance, unmapped
+            # New Transaction class: account_id, id, booking_date, amount, currency, counterparty, remittance, unmapped
+            
+            # Renaming for consistency with Polars naming conventions or old conventions
+            flat_tx["account"] = flat_tx.pop("account_id")
+            flat_tx["bookingDate"] = flat_tx.pop("booking_date")
+            
+            # Apply resolution
+            enrichment = self.resolve_transaction(tx)
+            flat_tx.update(enrichment)
 
-                flat_tx = {
-                    "account": account_id,
-                    "id": tx.get("internalTransactionId"),
-                    "bookingDate": booking_date,
-                    "amount": float(tx.get("transactionAmount", {}).get("amount", 0)),
-                    "currency": tx.get("transactionAmount", {}).get("currency"),
-                    "counterparty": self._get_counterparty(tx),
-                    "remittance": self._get_remittance(tx),
-                }
+            all_txs.append(flat_tx)
 
-                # Capture unmapped data
-                unmapped = tx.copy()
-                for k in [
-                    "internalTransactionId",
-                    "bookingDate",
-                    "transactionAmount",
-                    "creditorName",
-                    "debtorName",
-                    "remittanceInformationUnstructuredArray",
-                    "remittanceInformationUnstructured",
-                ]:
-                    unmapped.pop(k, None)
-
-                flat_tx["unmapped"] = json.dumps(unmapped)
-
-                # Apply resolution
-                enrichment = self.resolve_transaction(tx)
-                flat_tx.update(enrichment)
-
-                all_txs.append(flat_tx)
+        if not all_txs:
+             return pl.DataFrame(
+                [],
+                schema={
+                    "account": pl.Utf8,
+                    "id": pl.Utf8,
+                    "bookingDate": pl.Date,
+                    "amount": pl.Float64,
+                    "currency": pl.Utf8,
+                    "counterparty": pl.Utf8,
+                    "remittance": pl.Utf8,
+                    "unmapped": pl.Utf8,
+                    "clean_name": pl.Utf8,
+                    "category": pl.Utf8,
+                    "source": pl.Utf8,
+                    "confidence": pl.Float64,
+                },
+            )
 
         return pl.DataFrame(all_txs)
 
     def batch_process_llm(
         self,
-        transactions_dict: dict[str, list[dict]],
+        transactions: list[Transaction],
         force_update=False,
     ):
         """
@@ -373,22 +321,19 @@ class TransactionManager:
         to_process = []
 
         # Gather transactions that need processing
-        for _account_id, txs in transactions_dict.items():
-            for tx in txs:
-                tx_id = tx.get("internalTransactionId")
-                if not tx_id:
-                    continue
+        for tx in transactions:
+            if not tx.id:
+                continue
 
-                # Skip if already in manual or pattern matched (logic repeated to
-                # ensure we don't pay for resolved ones)
-                res = self.resolve_transaction(tx)
-                if res["source"] in ["MANUAL", "PATTERN", "ZERO_AMOUNT"]:
-                    continue
+            # Skip if already in manual or pattern matched
+            res = self.resolve_transaction(tx)
+            if res["source"] in ["MANUAL", "PATTERN", "ZERO_AMOUNT"]:
+                continue
 
-                if not force_update and res["source"] == "AI_CACHED":
-                    continue
+            if not force_update and res["source"] == "AI_CACHED":
+                continue
 
-                to_process.append(tx)
+            to_process.append(tx)
 
         if not to_process:
             logging.info("No new transactions to process with LLM.")
@@ -403,7 +348,7 @@ class TransactionManager:
             self._query_llm_chunk(chunk)
             self.save_data()  # Save incrementally
 
-    def _query_llm_chunk(self, tx_chunk: list[dict]):
+    def _query_llm_chunk(self, tx_chunk: list[Transaction]):
         """
         Helper to query OpenAI for a chunk of transactions.
         """
@@ -413,14 +358,10 @@ class TransactionManager:
         # Prepare prompt
         tx_list_str = ""
         for tx in tx_chunk:
-            tx_id = tx.get("internalTransactionId")
-            counterparty = self._get_counterparty(tx) or "Unknown"
-            remittance = self._get_remittance(tx)
-            amount = tx.get("transactionAmount", {}).get("amount", "0")
-            date = tx.get("bookingDate", "")
+            counterparty = tx.counterparty or "Unknown"
             tx_list_str += (
-                f"ID: {tx_id} | Date: {date} | Amount: {amount} | "
-                f"Counterparty: {counterparty} | Remittance: {remittance}\n"
+                f"ID: {tx.id} | Date: {tx.booking_date} | Amount: {tx.amount} | "
+                f"Counterparty: {counterparty} | Remittance: {tx.remittance}\n"
             )
 
         categories_str = "\n".join(self.categories)
@@ -462,8 +403,6 @@ Transactions:
                 # Validate category is in our allowed list, fallback if LLM hallucinated
                 category = item.category
                 if category not in self.categories and category != "Uncategorized":
-                    # Simple fuzzy match fallback or default could go here
-                    # For now, just keep what LLM gave but warn
                     logging.warning(
                         f"LLM returned unknown category '{category}' for "
                         f"{item.id}"
