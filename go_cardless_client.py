@@ -8,7 +8,8 @@ from polars import col as C
 
 
 ### Client class for GoCardless API
-### This class handles authentication, token management, and generic API requests through GET and POST methods.
+### This class handles authentication, token management, and generic API requests
+### through GET and POST methods.
 ### Upon initialization it will try to get a list of institutions after authentication.
 class Client:
     _base_url = "https://bankaccountdata.gocardless.com/api/v2/"

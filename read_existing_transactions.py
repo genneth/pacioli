@@ -12,19 +12,23 @@ def read_existing_transactions() -> dict[str, list[dict]]:
     1. Directory Structure:
        - A 'raw' directory exists in the current working directory.
        - Subdirectories within 'raw' represent unique accounts.
-       - Inside each account directory, files ending in '.json' contain transaction data.
+       - Inside each account directory, files ending in '.json' contain transaction
+         data.
 
     2. JSON File Structure:
        - Each JSON file contains a root dictionary.
        - The root dictionary has a 'transactions' key, which is itself a dictionary.
-       - The 'transactions' dictionary has a 'booked' key, which is a list of transaction objects.
+       - The 'transactions' dictionary has a 'booked' key, which is a list of
+         transaction objects.
 
     3. Transaction Object Structure:
        - Each item in the 'booked' list is a dictionary representing a transaction.
-       - Each transaction dictionary MUST contain a truthy 'internalTransactionId' field used for deduplication.
+       - Each transaction dictionary MUST contain a truthy 'internalTransactionId'
+         field used for deduplication.
 
     Returns:
-        A dictionary mapping account IDs (directory names) to a list of unique transaction dictionaries.
+        A dictionary mapping account IDs (directory names) to a list of unique
+        transaction dictionaries.
     """
     # load existing json dumps
     raw_dumps: dict[str, list] = {}
@@ -72,7 +76,8 @@ def read_existing_transactions() -> dict[str, list[dict]]:
             txs = transactions_wrapper.get("booked")
             if not isinstance(txs, list):
                 raise ValueError(
-                    f"Dump {i} for account '{account}' missing 'booked' list in 'transactions'."
+                    f"Dump {i} for account '{account}' missing 'booked' list in "
+                    "'transactions'."
                 )
 
             all_transactions.extend(txs)
@@ -89,7 +94,8 @@ def read_existing_transactions() -> dict[str, list[dict]]:
 
             if not tx_id:
                 raise ValueError(
-                    f"Transaction missing internalTransactionId in account '{account}'. Transaction dump: {json.dumps(tx)}"
+                    "Transaction missing internalTransactionId in "
+                    f"account '{account}'. Transaction dump: {json.dumps(tx)}"
                 )
 
             if tx_id not in seen_ids:
