@@ -31,7 +31,9 @@ class TransactionManager:
     def __init__(self, oai_client: OpenAI | None = None, data_dir: str = DATA_DIR):
         self.oai = oai_client
         self.data_dir = data_dir
-        self.manual_assignments_file = os.path.join(self.data_dir, "manual_assignments.json")
+        self.manual_assignments_file = os.path.join(
+            self.data_dir, "manual_assignments.json"
+        )
         self.patterns_file = os.path.join(self.data_dir, "patterns.json")
         self.categories_file = os.path.join(self.data_dir, "categories.json")
         self.cache_file = os.path.join(self.data_dir, "llm_cache.json")
@@ -112,11 +114,9 @@ class TransactionManager:
             return str(unstructured)
         return ""
 
-    def resolve_transaction(self, tx: dict[str, Any]) -> dict[str, Any]:
+    def _find_matches(self, tx: dict[str, Any]) -> dict[str, Any]:
         """
-        Resolves a single transaction against Manual, Patterns, and Cache.
-        Returns the enrichment data (clean_name, category, source, confidence).
-        Checks for overlaps and logs warnings.
+        Internal method to find all possible matches for a transaction.
         """
         tx_id = tx.get("internalTransactionId")
         if not tx_id:
@@ -148,7 +148,6 @@ class TransactionManager:
             pass
 
         # 2. Check Patterns
-        # Fields to check: counterparty, remittance (normalized)
         counterparty = self._get_counterparty(tx)
         remittance = self._get_remittance(tx)
 
@@ -177,13 +176,8 @@ class TransactionManager:
                 )
 
         if pattern_matches:
-            if len(pattern_matches) > 1:
-                matched_pats = [m["pattern_matched"] for m in pattern_matches]
-                logging.warning(
-                    f"Transaction {tx_id} matched multiple patterns: {matched_pats}. Using the first one."
-                )
-
             matches["PATTERN"] = pattern_matches[0]
+            matches["_ALL_PATTERNS"] = pattern_matches
 
         # 3. Check LLM Cache
         if tx_id in self.llm_cache:
@@ -194,6 +188,30 @@ class TransactionManager:
                 "source": "AI_CACHED",
                 "confidence": cached.get("confidence", 0.7),
             }
+
+        return matches
+
+    def resolve_transaction(self, tx: dict[str, Any]) -> dict[str, Any]:
+        """
+        Resolves a single transaction against Manual, Patterns, and Cache.
+        Returns the enrichment data (clean_name, category, source, confidence).
+        Checks for overlaps and logs warnings.
+        """
+        tx_id = tx.get("internalTransactionId")
+        if not tx_id:
+            return {}
+
+        matches = self._find_matches(tx)
+
+        # Check for multiple patterns warning
+        if "_ALL_PATTERNS" in matches:
+            pattern_matches = matches["_ALL_PATTERNS"]
+            if len(pattern_matches) > 1:
+                matched_pats = [m["pattern_matched"] for m in pattern_matches]
+                logging.warning(
+                    f"Transaction {tx_id} matched multiple patterns: {matched_pats}. "
+                    "Using the first one."
+                )
 
         # --- Hierarchy & Overlap Warnings ---
 
@@ -209,7 +227,8 @@ class TransactionManager:
             final_result = matches["MANUAL"]
             if "PATTERN" in matches:
                 logging.info(
-                    f"Transaction {tx_id}: Manual assignment overrides Pattern match '{matches['PATTERN'].get('pattern_matched')}'"
+                    f"Transaction {tx_id}: Manual assignment overrides Pattern match "
+                    f"'{matches['PATTERN'].get('pattern_matched')}'"
                 )
             if "AI_CACHED" in matches:
                 logging.info(
@@ -235,6 +254,52 @@ class TransactionManager:
             del final_result["pattern_matched"]
 
         return final_result
+
+    def explain_transaction(self, tx: dict[str, Any]) -> dict[str, Any]:
+        """
+        Returns a detailed diagnosis of how the transaction is resolved.
+        """
+        matches = self._find_matches(tx)
+
+        final_result = self.resolve_transaction(tx)
+
+        return {
+            "tx_id": tx.get("internalTransactionId"),
+            "counterparty": self._get_counterparty(tx),
+            "remittance": self._get_remittance(tx),
+            "matches": matches,
+            "final_result": final_result,
+        }
+
+    def test_pattern(
+        self, transactions: list[dict], pattern: str, field: str = "counterparty"
+    ) -> list[dict]:
+        """
+        Tests a regex pattern against a list of transactions.
+        Returns a list of matching transactions with details.
+        """
+        matches = []
+        for tx in transactions:
+            target_text = ""
+            if field == "counterparty":
+                target_text = self._get_counterparty(tx)
+            elif field == "remittance":
+                target_text = self._get_remittance(tx)
+            elif field == "any":
+                target_text = f"{self._get_counterparty(tx)} {self._get_remittance(tx)}"
+
+            if re.search(pattern, target_text, re.IGNORECASE):
+                matches.append(
+                    {
+                        "tx_id": tx.get("internalTransactionId"),
+                        "bookingDate": tx.get("bookingDate"),
+                        "amount": tx.get("transactionAmount", {}).get("amount"),
+                        "counterparty": self._get_counterparty(tx),
+                        "remittance": self._get_remittance(tx),
+                        "matched_text": target_text,
+                    }
+                )
+        return matches
 
     def enrich_transactions(
         self,
@@ -345,14 +410,18 @@ class TransactionManager:
             remittance = self._get_remittance(tx)
             amount = tx.get("transactionAmount", {}).get("amount", "0")
             date = tx.get("bookingDate", "")
-            tx_list_str += f"ID: {tx_id} | Date: {date} | Amount: {amount} | Counterparty: {counterparty} | Remittance: {remittance}\n"
+            tx_list_str += (
+                f"ID: {tx_id} | Date: {date} | Amount: {amount} | "
+                f"Counterparty: {counterparty} | Remittance: {remittance}\n"
+            )
 
         categories_str = "\n".join(self.categories)
 
         prompt = f"""
 You are a financial assistant.
 Categorize the following transactions and provide a clean merchant name.
-Use ONLY the provided categories. If none fit perfectly, use the best available or "Uncategorized".
+Use ONLY the provided categories. If none fit perfectly, use the best available or
+"Uncategorized".
 
 Categories:
 {categories_str}
@@ -367,7 +436,8 @@ Transactions:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a helpful financial categorization assistant.",
+                        "content": "You are a helpful financial categorization "
+                        "assistant.",
                     },
                     {"role": "user", "content": prompt},
                 ],
@@ -387,7 +457,8 @@ Transactions:
                     # Simple fuzzy match fallback or default could go here
                     # For now, just keep what LLM gave but warn
                     logging.warning(
-                        f"LLM returned unknown category '{category}' for {item.internalTransactionId}"
+                        f"LLM returned unknown category '{category}' for "
+                        f"{item.internalTransactionId}"
                     )
 
                 self.llm_cache[item.internalTransactionId] = {
