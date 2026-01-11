@@ -27,7 +27,7 @@ def test_get_counterparty_logic():
     assert _get_counterparty(tx3) == "FROM Debtor TO Creditor"
 
     # Case 4: Neither
-    tx4 = {}
+    tx4: dict[str, Any] = {}
     assert _get_counterparty(tx4) == ""
 
 
@@ -52,11 +52,11 @@ def test_get_remittance_logic(caplog):
         assert "has both" in caplog.text
 
     # Case 4: Neither
-    tx4 = {}
+    tx4: dict[str, Any] = {}
     assert _get_remittance(tx4) == ""
 
     # Case 5: Empty Array
-    tx5 = {"remittanceInformationUnstructuredArray": []}
+    tx5: dict[str, Any] = {"remittanceInformationUnstructuredArray": []}
     assert _get_remittance(tx5) == ""
 
 
@@ -64,7 +64,7 @@ def test_get_remittance_logic(caplog):
 
 
 def test_deduplicate_and_validate_edge_cases(caplog):
-    raw_dumps = {
+    raw_dumps: dict[str, list[dict[Any, Any]]] = {
         "acc1": [
             {
                 "transactions": {
