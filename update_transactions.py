@@ -24,7 +24,7 @@ import logging
 import os
 
 from go_cardless_client import Client
-from transaction_loader import load_transactions
+from transaction_loader import get_latest_booking_dates
 
 # helps w/ debugging
 logger = logging.getLogger()
@@ -41,12 +41,7 @@ logger.addHandler(stream_handler)
 client = Client()
 
 # existing data
-transactions = load_transactions()
-
-max_dates = {}
-for t in transactions:
-    if t.account_id not in max_dates or t.booking_date > max_dates[t.account_id]:
-        max_dates[t.account_id] = t.booking_date
+max_dates = get_latest_booking_dates()
 
 yesterday = datetime.date.today() - datetime.timedelta(days=1)
 

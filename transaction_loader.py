@@ -26,13 +26,33 @@ def load_transactions(data_dir: str = "raw") -> list[Transaction]:
         A list of unique Transaction objects.
     """
     raw_dumps = _load_raw_json_files(data_dir)
-    return _process_transactions(raw_dumps)
+    validated_data = _deduplicate_and_validate(raw_dumps)
+    return _map_to_transactions(validated_data)
+
+
+def get_latest_booking_dates(data_dir: str = "raw") -> dict[str, date]:
+    """
+    Returns the latest booking date for each account.
+    Safe and robust: ensures all considered transactions have valid dates.
+    """
+    raw_dumps = _load_raw_json_files(data_dir)
+    validated_data = _deduplicate_and_validate(raw_dumps)
+
+    max_dates = {}
+    for account, txs in validated_data.items():
+        if not txs:
+            continue
+        # We can safely parse because _deduplicate_and_validate checked the format
+        latest = max(date.fromisoformat(tx["bookingDate"]) for tx in txs)
+        max_dates[account] = latest
+
+    return max_dates
 
 
 def _load_raw_json_files(data_dir: str) -> dict[str, list[dict]]:
     """Loads all JSON files from account subdirectories in the data_dir."""
     raw_dumps: dict[str, list[dict]] = {}
-    
+
     if not os.path.exists(data_dir):
         return raw_dumps
 
@@ -45,7 +65,7 @@ def _load_raw_json_files(data_dir: str) -> dict[str, list[dict]]:
         for file_name in os.listdir(account_path):
             if not file_name.endswith(".json"):
                 continue
-                
+
             file_path = os.path.join(account_path, file_name)
             try:
                 with open(file_path, encoding="utf-8") as f:
@@ -54,65 +74,84 @@ def _load_raw_json_files(data_dir: str) -> dict[str, list[dict]]:
                     logging.info(f"Loaded {file_name} for account {account}.")
             except json.JSONDecodeError:
                 logging.error(f"Failed to decode JSON from {file_name}")
-    
+
     return raw_dumps
 
 
-def _process_transactions(raw_dumps: dict[str, list[dict]]) -> list[Transaction]:
-    """Deduplicates and converts raw dumps into Transaction objects."""
-    all_rows = []
+def _deduplicate_and_validate(
+    raw_dumps: dict[str, list[dict]],
+) -> dict[str, list[dict]]:
+    """
+    Deduplicates raw transactions and validates essential fields (ID, Date).
+    Returns a dictionary mapping account IDs to lists of unique, valid transaction
+    dicts.
+    """
+    validated_transactions = {}
 
     for account_id, dumps in raw_dumps.items():
+        unique_txs = []
+        seen_ids = set()
+
         # Extract all booked transactions for this account
-        account_transactions = []
+        raw_txs = []
         for dump in dumps:
             if not isinstance(dump, dict):
                 continue
-            
-            # Navigate checks safely
             booked = dump.get("transactions", {}).get("booked")
             if isinstance(booked, list):
-                account_transactions.extend(booked)
+                raw_txs.extend(booked)
 
-        # Deduplicate by ID
-        seen_ids = set()
-        for tx in account_transactions:
+        for tx in raw_txs:
             if not isinstance(tx, dict):
                 continue
 
+            # Check ID
             internal_id = tx.get("internalTransactionId")
-            if not internal_id or internal_id in seen_ids:
+            if not internal_id:
                 continue
-            
+
+            # Check Date
+            booking_date_str = tx.get("bookingDate")
+            if not booking_date_str:
+                continue
+            try:
+                date.fromisoformat(booking_date_str)
+            except ValueError:
+                logging.error(
+                    f"Invalid date format for transaction {internal_id} in "
+                    f"{account_id}: {booking_date_str}"
+                )
+                continue
+
+            # Deduplicate
+            if internal_id in seen_ids:
+                continue
+
             seen_ids.add(internal_id)
-            
-            # Convert to Transaction object
-            transaction_obj = _map_to_transaction(account_id, tx)
+            unique_txs.append(tx)
+
+        validated_transactions[account_id] = unique_txs
+
+    return validated_transactions
+
+
+def _map_to_transactions(validated_data: dict[str, list[dict]]) -> list[Transaction]:
+    """Converts validated transaction dicts into Transaction objects."""
+    all_rows = []
+    for account_id, txs in validated_data.items():
+        for tx in txs:
+            transaction_obj = _map_single_transaction(account_id, tx)
             if transaction_obj:
                 all_rows.append(transaction_obj)
-
     return all_rows
 
 
-def _map_to_transaction(account_id: str, tx: dict[str, Any]) -> Transaction | None:
+def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction | None:
     """Maps a raw dictionary to a Transaction object."""
-    internal_id = tx.get("internalTransactionId")
-    if not internal_id:
-        return None
-
-    booking_date_str = tx.get("bookingDate")
-    try:
-        booking_date = (
-            date.fromisoformat(booking_date_str) if booking_date_str else None
-        )
-    except ValueError:
-        logging.error(
-            f"Invalid date format for transaction {internal_id}: {booking_date_str}"
-        )
-        return None
-
-    if not booking_date:
-        return None
+    # These are already checked in _deduplicate_and_validate, but safe to keep or
+    # assumes valid
+    internal_id = tx["internalTransactionId"]
+    booking_date = date.fromisoformat(tx["bookingDate"])
 
     # Handle amount
     amount_dict = tx.get("transactionAmount", {})
@@ -122,7 +161,7 @@ def _map_to_transaction(account_id: str, tx: dict[str, Any]) -> Transaction | No
         amount = 0.0
 
     currency = amount_dict.get("currency", "")
-    
+
     counterparty = _get_counterparty(tx)
     remittance = _get_remittance(tx)
 
