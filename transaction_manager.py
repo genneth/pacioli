@@ -28,8 +28,14 @@ class CategorizationResponse(BaseModel):
 
 
 class TransactionManager:
-    def __init__(self, oai_client: OpenAI | None = None):
+    def __init__(self, oai_client: OpenAI | None = None, data_dir: str = DATA_DIR):
         self.oai = oai_client
+        self.data_dir = data_dir
+        self.manual_assignments_file = os.path.join(self.data_dir, "manual_assignments.json")
+        self.patterns_file = os.path.join(self.data_dir, "patterns.json")
+        self.categories_file = os.path.join(self.data_dir, "categories.json")
+        self.cache_file = os.path.join(self.data_dir, "llm_cache.json")
+
         self.manual_assignments: dict[str, dict[str, str]] = {}
         self.patterns: list[dict[str, str]] = []
         self.categories: list[str] = []
@@ -39,34 +45,35 @@ class TransactionManager:
 
     def load_data(self):
         """Loads all configuration and data files."""
-        if os.path.exists(MANUAL_ASSIGNMENTS_FILE):
-            with open(MANUAL_ASSIGNMENTS_FILE) as f:
+        if os.path.exists(self.manual_assignments_file):
+            with open(self.manual_assignments_file) as f:
                 self.manual_assignments = json.load(f)
 
-        if os.path.exists(PATTERNS_FILE):
-            with open(PATTERNS_FILE) as f:
+        if os.path.exists(self.patterns_file):
+            with open(self.patterns_file) as f:
                 self.patterns = json.load(f)
 
-        if os.path.exists(CATEGORIES_FILE):
-            with open(CATEGORIES_FILE) as f:
+        if os.path.exists(self.categories_file):
+            with open(self.categories_file) as f:
                 self.categories = json.load(f)
 
-        if os.path.exists(CACHE_FILE):
-            with open(CACHE_FILE) as f:
+        if os.path.exists(self.cache_file):
+            with open(self.cache_file) as f:
                 self.llm_cache = json.load(f)
 
     def save_data(self):
         """Saves all configuration and data files."""
-        with open(MANUAL_ASSIGNMENTS_FILE, "w") as f:
+        os.makedirs(self.data_dir, exist_ok=True)
+        with open(self.manual_assignments_file, "w") as f:
             json.dump(self.manual_assignments, f, indent=2)
 
-        with open(PATTERNS_FILE, "w") as f:
+        with open(self.patterns_file, "w") as f:
             json.dump(self.patterns, f, indent=2)
 
-        with open(CATEGORIES_FILE, "w") as f:
+        with open(self.categories_file, "w") as f:
             json.dump(self.categories, f, indent=2)
 
-        with open(CACHE_FILE, "w") as f:
+        with open(self.cache_file, "w") as f:
             json.dump(self.llm_cache, f, indent=2)
 
     def _get_counterparty(self, tx: dict[str, Any]) -> str:
