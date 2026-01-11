@@ -87,7 +87,7 @@ class TransactionManager:
         if not tx.id:
             return {}
 
-        matches = {}  # source -> result
+        matches: dict[str, Any] = {}  # source -> result
 
         # 1. Check Manual Assignments
         if tx.id in self.manual_assignments:
@@ -270,6 +270,10 @@ class TransactionManager:
             # Basic flattening
             flat_tx = asdict(tx)
 
+            # Deduplicate remittance if it matches counterparty
+            if flat_tx["counterparty"] == flat_tx["remittance"]:
+                flat_tx["remittance"] = None
+
             # Apply resolution
             enrichment = self.resolve_transaction(tx)
             flat_tx.update(enrichment)
@@ -335,9 +339,13 @@ class TransactionManager:
         tx_list_str = ""
         for tx in tx_chunk:
             counterparty = tx.counterparty or "Unknown"
+            remittance = f"| Remittance: {tx.remittance}"
+            if remittance == counterparty:
+                remittance = ""
+
             tx_list_str += (
                 f"ID: {tx.id} | Date: {tx.booking_date} | Amount: {tx.amount} | "
-                f"Counterparty: {counterparty} | Remittance: {tx.remittance}\n"
+                f"Counterparty: {counterparty} {remittance}\n"
             )
 
         categories_str = "\n".join(self.categories)
