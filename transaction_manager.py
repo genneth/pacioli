@@ -298,22 +298,27 @@ class TransactionManager:
             logging.warning("No OpenAI client provided.")
             return
 
-        to_process = []
+        if not transactions:
+            return
 
-        # Gather transactions that need processing
-        for tx in transactions:
-            if not tx.id:
-                continue
+        # Use enrich_transactions to get current state
+        # This returns a Polars DataFrame
+        try:
+            df = self.enrich_transactions(transactions)
+        except ValueError:
+            # Handle case where enrich_transactions might fail on empty list
+            return
 
-            # Skip if already in manual or pattern matched
-            res = self.resolve_transaction(tx)
-            if res["source"] in ["MANUAL", "PATTERN", "ZERO_AMOUNT"]:
-                continue
+        # Filter for rows that need processing
+        # 1. source is null (Uncategorized/Unmatched)
+        # 2. force_update is True AND source is 'AI_CACHED'
 
-            if not force_update and res["source"] == "AI_CACHED":
-                continue
+        filter_expr = pl.col("source").is_null()
+        if force_update:
+            filter_expr = filter_expr | (pl.col("source") == "AI_CACHED")
 
-            to_process.append(tx)
+        to_process_df = df.filter(filter_expr)
+        to_process = to_process_df.to_dicts()
 
         if not to_process:
             logging.info("No new transactions to process with LLM.")
@@ -328,7 +333,7 @@ class TransactionManager:
             self._query_llm_chunk(chunk)
             self.save_data()  # Save incrementally
 
-    def _query_llm_chunk(self, tx_chunk: list[Transaction]):
+    def _query_llm_chunk(self, tx_chunk: list[dict]):
         """
         Helper to query OpenAI for a chunk of transactions.
         """
@@ -338,14 +343,19 @@ class TransactionManager:
         # Prepare prompt
         tx_list_str = ""
         for tx in tx_chunk:
-            counterparty = tx.counterparty or "Unknown"
-            remittance = f"| Remittance: {tx.remittance}"
-            if remittance == counterparty:
-                remittance = ""
+            # tx is a dict from Polars
+            tx_id = tx.get("id")
+            booking_date = tx.get("booking_date")
+            amount = tx.get("amount")
+            counterparty = tx.get("counterparty") or "Unknown"
+
+            # enrich_transactions handles remittance deduplication
+            remittance_val = tx.get("remittance")
+            remittance_str = f"| Remittance: {remittance_val}" if remittance_val else ""
 
             tx_list_str += (
-                f"ID: {tx.id} | Date: {tx.booking_date} | Amount: {tx.amount} | "
-                f"Counterparty: {counterparty} {remittance}\n"
+                f"ID: {tx_id} | Date: {booking_date} | Amount: {amount} | "
+                f"Counterparty: {counterparty} {remittance_str}\n"
             )
 
         categories_str = "\n".join(self.categories)
