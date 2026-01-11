@@ -97,10 +97,14 @@ def _deduplicate_and_validate(
         for dump in dumps:
             if not isinstance(dump, dict):
                 continue
-            booked = dump.get("transactions", {}).get("booked")
+
+            transactions = dump.get("transactions")
+            if not isinstance(transactions, dict):
+                continue
+
+            booked = transactions.get("booked")
             if isinstance(booked, list):
                 raw_txs.extend(booked)
-
         for tx in raw_txs:
             if not isinstance(tx, dict):
                 continue
@@ -146,7 +150,7 @@ def _map_to_transactions(validated_data: dict[str, list[dict]]) -> list[Transact
     return all_rows
 
 
-def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction | None:
+def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
     """Maps a raw dictionary to a Transaction object."""
     # These are already checked in _deduplicate_and_validate, but safe to keep or
     # assumes valid
