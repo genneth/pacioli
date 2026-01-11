@@ -5,8 +5,8 @@ import re
 from typing import Any
 
 import polars as pl
-from polars import col as C
 from openai import OpenAI
+from polars import col as C
 from pydantic import BaseModel
 
 # Paths
@@ -227,7 +227,8 @@ class TransactionManager:
                     "amount": float(tx.get("transactionAmount", {}).get("amount", 0)),
                     "currency": tx.get("transactionAmount", {}).get("currency"),
                     "counterparty": self._get_counterparty(tx),
-                    "remittance": tx.get("remittanceInformationUnstructuredArray", []) or [],
+                    "remittance": tx.get("remittanceInformationUnstructuredArray", [])
+                    or [],
                 }
 
                 # Capture unmapped data
