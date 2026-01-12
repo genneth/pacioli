@@ -246,12 +246,13 @@ def test_extract_extra_fields():
         "debtorAccount": {"bban": "BB456"},
     }
     res2 = _extract_extra_fields(tx2)
-    assert res2["time_of_day"] is None
+    assert res2["time_of_day"] == "00:00"
     assert res2["counterparty_account"] == "BB456"
 
     # Empty case
     res3 = _extract_extra_fields({})
-    assert all(v is None for v in res3.values())
+    assert res3["time_of_day"] == "00:00"
+    assert all(v is None for k, v in res3.items() if k != "time_of_day")
 
 
 # --- Integration Test with Temporary Directory ---

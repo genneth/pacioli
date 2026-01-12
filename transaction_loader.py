@@ -14,8 +14,8 @@ class Transaction:
     amount: float
     currency: str
     counterparty: str
-    remittance: str | None
-    time_of_day: str | None = None
+    time_of_day: str
+    remittance: str | None = None
     tx_type: str | None = None
     foreign_currency: str | None = None
     card_last4: str | None = None
@@ -158,7 +158,7 @@ def _map_to_transactions(validated_data: dict[str, list[dict]]) -> list[Transact
 def _extract_extra_fields(tx: dict[str, Any]) -> dict[str, Any]:
     """Extracts additional high-value fields for categorization."""
     extras: dict[str, Any] = {
-        "time_of_day": None,
+        "time_of_day": "00:00",
         "tx_type": None,
         "foreign_currency": None,
         "card_last4": None,
@@ -304,8 +304,8 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
         amount=amount,
         currency=currency,
         counterparty=counterparty,
-        remittance=remittance,
         time_of_day=extras["time_of_day"],
+        remittance=remittance,
         tx_type=extras["tx_type"],
         foreign_currency=extras["foreign_currency"],
         card_last4=extras["card_last4"],
