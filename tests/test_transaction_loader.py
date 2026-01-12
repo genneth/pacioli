@@ -47,7 +47,7 @@ def test_elide_transaction_info():
 
     # 7. Both missing
     cp, rm = _elide_transaction_info(None, None, "tx7")
-    assert cp is None
+    assert cp == ""
     assert rm is None
 
 

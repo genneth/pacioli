@@ -13,7 +13,7 @@ class Transaction:
     booking_date: date
     amount: float
     currency: str
-    counterparty: str | None
+    counterparty: str
     remittance: str | None
     time_of_day: str | None = None
     tx_type: str | None = None
@@ -344,7 +344,7 @@ def _get_remittance(tx: dict[str, Any]) -> str | None:
 
 def _elide_transaction_info(
     counterparty: str | None, remittance: str | None, internal_id: str
-) -> tuple[str | None, str | None]:
+) -> tuple[str, str | None]:
     """
     Elides counterparty and remittance information to avoid duplication.
     If one contains the other, keep the longer one in counterparty and clear remittance.
@@ -352,7 +352,7 @@ def _elide_transaction_info(
     This reduces token usage when sending data to the LLM and reduces visual noise
     for the user.
     """
-    new_cp = counterparty
+    new_cp: str
     new_rm = remittance
 
     if not counterparty:
@@ -363,9 +363,10 @@ def _elide_transaction_info(
             logging.warning(
                 f"Transaction {internal_id} has no counterparty or remittance data."
             )
-            new_cp = None
+            new_cp = ""
             new_rm = None
     else:
+        new_cp = counterparty
         if remittance:
             # If one string is contained in the other, take the longer/richer one as
             # counterparty
