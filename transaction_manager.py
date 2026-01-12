@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from typing import Any
 
 import polars as pl

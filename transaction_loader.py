@@ -249,7 +249,8 @@ def _elide_transaction_info(
             new_rm = None
     else:
         if remittance:
-            # If one string is contained in the other, take the longer/richer one as counterparty
+            # If one string is contained in the other, take the longer/richer one as
+            # counterparty
             if counterparty in remittance:
                 new_cp = remittance
                 new_rm = None
