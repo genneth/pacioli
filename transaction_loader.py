@@ -15,7 +15,12 @@ class Transaction:
     currency: str
     counterparty: str | None
     remittance: str | None
-    unmapped: str  # JSON string of the original raw data excluding mapped fields
+    time_of_day: str | None = None
+    tx_type: str | None = None
+    foreign_currency: str | None = None
+    card_last4: str | None = None
+    counterparty_account: str | None = None
+    unmapped: str = "{}"  # JSON string of the original raw data excluding mapped fields
 
 
 def load_transactions(data_dir: str = "raw") -> list[Transaction]:
@@ -150,6 +155,71 @@ def _map_to_transactions(validated_data: dict[str, list[dict]]) -> list[Transact
     return all_rows
 
 
+def _extract_extra_fields(tx: dict[str, Any]) -> dict[str, Any]:
+    """Extracts additional high-value fields for categorization."""
+    extras: dict[str, Any] = {
+        "time_of_day": None,
+        "tx_type": None,
+        "foreign_currency": None,
+        "card_last4": None,
+        "counterparty_account": None,
+    }
+
+    # 1. Time of Day
+    booking_dt = tx.get("bookingDateTime")
+    if booking_dt and "T" in booking_dt:
+        try:
+            # Extract HH:MM from ISO format "YYYY-MM-DDTHH:MM:SS.mmmmmmZ"
+            time_part = booking_dt.split("T")[1]
+            extras["time_of_day"] = time_part[:5]  # HH:MM
+        except IndexError:
+            pass
+
+    # 2. Transaction Type
+    extras["tx_type"] = tx.get("proprietaryBankTransactionCode")
+
+    # 3. Foreign Currency
+    currency_exchange = tx.get("currencyExchange")
+    if isinstance(currency_exchange, dict):
+        extras["foreign_currency"] = currency_exchange.get("sourceCurrency")
+
+    # 4. Card Last 4
+    ads = tx.get("additionalDataStructured")
+    if isinstance(ads, dict):
+        card_inst = ads.get("cardInstrument")
+        if isinstance(card_inst, dict):
+            extras["card_last4"] = card_inst.get("identification")
+
+    # 5. Counterparty Account
+    # Check creditor first, then debtor (assuming usually one is the 'other' party)
+    # Note: Logic might need refinement if 'debtor' is always the user for outgoing
+    # and 'creditor' for incoming. For now, grab whichever has a bban/iban that isn't
+    # empty.
+
+    # Actually, we want to know who the *other* party is.
+    # If amount is negative, user is debtor, so counterparty is creditorAccount.
+    # If amount is positive, user is creditor, so counterparty is debtorAccount.
+    # However, 'transactionAmount' isn't passed here easily without parsing again or
+    # passing it in. We'll just look for both and extracting the one that seems to be
+    # the external entity. Since we can't easily know which is 'us' without account
+    # context, we'll try to extract useful info from either.
+
+    creditor_acc = tx.get("creditorAccount", {})
+    debtor_acc = tx.get("debtorAccount", {})
+
+    # Simplistic approach: Just grab IBAN or BBAN if present
+    acc_id = (
+        creditor_acc.get("bban")
+        or creditor_acc.get("iban")
+        or debtor_acc.get("bban")
+        or debtor_acc.get("iban")
+    )
+
+    extras["counterparty_account"] = acc_id
+
+    return extras
+
+
 def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
     """Maps a raw dictionary to a Transaction object."""
     # These are already checked in _deduplicate_and_validate, but safe to keep or
@@ -173,6 +243,8 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
         counterparty, remittance, internal_id
     )
 
+    extras = _extract_extra_fields(tx)
+
     # We want to preserve all raw data that hasn't been extracted into first-class
     # fields. This allows for future reprocessing or debugging without needing to
     # re-fetch from the bank.
@@ -185,10 +257,17 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
         "debtorName",
         "remittanceInformationUnstructuredArray",
         "remittanceInformationUnstructured",
-        # Safe to drop fields
+        # Extracted extra fields
+        "bookingDateTime",
+        "proprietaryBankTransactionCode",
+        "currencyExchange",
+        "creditorAccount",
+        "debtorAccount",
+        # Safe to drop fields (technical or redundant)
         "transactionId",
         "valueDate",
         "valueDateTime",
+        "balanceAfterTransaction",
     ]
     for k in mapped_keys:
         unmapped.pop(k, None)
@@ -206,6 +285,9 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
                 if isinstance(ci, dict):
                     ci.pop("cardSchemeName", None)
                     ci.pop("name", None)
+                    # We extracted identification, so remove it too
+                    ci.pop("identification", None)
+
                     # If cardInstrument is now empty (only had dropped fields),
                     # remove it
                     if not ci:
@@ -223,6 +305,11 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
         currency=currency,
         counterparty=counterparty,
         remittance=remittance,
+        time_of_day=extras["time_of_day"],
+        tx_type=extras["tx_type"],
+        foreign_currency=extras["foreign_currency"],
+        card_last4=extras["card_last4"],
+        counterparty_account=extras["counterparty_account"],
         unmapped=json.dumps(unmapped),
     )
 

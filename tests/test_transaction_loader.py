@@ -207,14 +207,51 @@ def test_map_single_transaction_robustness():
     tx4 = base_tx.copy()
     tx4["extraField"] = "keepMe"
     tx4["transactionAmount"] = {"amount": "10", "currency": "USD"}
+    tx4["bookingDateTime"] = "2023-01-01T15:00:00Z"
     res4 = _map_single_transaction("acc1", tx4)
 
+    assert res4.time_of_day == "15:00"
     unmapped = json.loads(res4.unmapped)
     assert "extraField" in unmapped
     assert unmapped["extraField"] == "keepMe"
-    # Ensure mapped fields are removed
+    # Ensure mapped fields (including extra extracted ones) are removed
     assert "internalTransactionId" not in unmapped
     assert "transactionAmount" not in unmapped
+    assert "bookingDateTime" not in unmapped
+
+
+def test_extract_extra_fields():
+    from transaction_loader import _extract_extra_fields
+
+    # Full case
+    tx = {
+        "bookingDateTime": "2023-01-01T12:34:56.789Z",
+        "proprietaryBankTransactionCode": "CARD_PAYMENT",
+        "currencyExchange": {"sourceCurrency": "USD"},
+        "additionalDataStructured": {
+            "cardInstrument": {"identification": "1234"}
+        },
+        "creditorAccount": {"iban": "GB123"},
+    }
+    res = _extract_extra_fields(tx)
+    assert res["time_of_day"] == "12:34"
+    assert res["tx_type"] == "CARD_PAYMENT"
+    assert res["foreign_currency"] == "USD"
+    assert res["card_last4"] == "1234"
+    assert res["counterparty_account"] == "GB123"
+
+    # Partial case
+    tx2 = {
+        "bookingDateTime": "2023-01-01",  # No T
+        "debtorAccount": {"bban": "BB456"},
+    }
+    res2 = _extract_extra_fields(tx2)
+    assert res2["time_of_day"] is None
+    assert res2["counterparty_account"] == "BB456"
+
+    # Empty case
+    res3 = _extract_extra_fields({})
+    assert all(v is None for v in res3.values())
 
 
 # --- Integration Test with Temporary Directory ---

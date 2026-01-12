@@ -34,6 +34,8 @@ def test_enrich_transactions_structure(temp_data_dir):
 
     assert "counterparty" in df.columns
     assert "clean_name" in df.columns
+    assert "time_of_day" in df.columns
+    assert "tx_type" in df.columns
     assert df.select(C.counterparty).item(0, 0) == "Test Creditor"
     assert df.select(C.remittance).item(0, 0) == "part1\npart2"
 
