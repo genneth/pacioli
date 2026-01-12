@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 
 import pytest
 from polars import col as C
@@ -22,7 +22,7 @@ def test_enrich_transactions_structure(temp_data_dir):
         id="tx1",
         account_id="acc1",
         booking_date=date(2023, 1, 1),
-        time_of_day="00:00",
+        time_of_day=time(0, 0),
         amount=10.0,
         currency="USD",
         counterparty="Test Creditor",
@@ -50,7 +50,7 @@ def test_resolve_transaction_pattern_matching(temp_data_dir):
         id="tx1",
         account_id="acc1",
         booking_date=date(2023, 1, 1),
-        time_of_day="00:00",
+        time_of_day=time(0, 0),
         amount=100.0,
         currency="GBP",
         counterparty="Unknown",
@@ -72,7 +72,7 @@ def test_manual_override(temp_data_dir):
         id="tx1",
         account_id="acc1",
         booking_date=date(2023, 1, 1),
-        time_of_day="00:00",
+        time_of_day=time(0, 0),
         amount=100.0,
         currency="GBP",
         counterparty="Unknown",
@@ -91,7 +91,7 @@ def test_zero_amount(temp_data_dir):
         id="tx_zero",
         account_id="acc1",
         booking_date=date(2023, 1, 1),
-        time_of_day="00:00",
+        time_of_day=time(0, 0),
         amount=0.0,
         currency="GBP",
         counterparty="Unknown",

@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, time
 from typing import Any
 
 
@@ -11,7 +11,7 @@ class Transaction:
     id: str
     account_id: str
     booking_date: date
-    time_of_day: str
+    time_of_day: time
     amount: float
     currency: str
     counterparty: str
@@ -158,56 +158,31 @@ def _map_to_transactions(validated_data: dict[str, list[dict]]) -> list[Transact
 def _extract_extra_fields(tx: dict[str, Any]) -> dict[str, Any]:
     """Extracts additional high-value fields for categorization."""
     extras: dict[str, Any] = {
-        "time_of_day": "00:00",
         "tx_type": None,
         "foreign_currency": None,
         "card_last4": None,
         "counterparty_account": None,
     }
 
-    # 1. Time of Day
-    booking_dt = tx.get("bookingDateTime")
-    if booking_dt and "T" in booking_dt:
-        try:
-            # Extract HH:MM from ISO format "YYYY-MM-DDTHH:MM:SS.mmmmmmZ"
-            time_part = booking_dt.split("T")[1]
-            extras["time_of_day"] = time_part[:5]  # HH:MM
-        except IndexError:
-            pass
-
-    # 2. Transaction Type
     extras["tx_type"] = tx.get("proprietaryBankTransactionCode")
 
-    # 3. Foreign Currency
     currency_exchange = tx.get("currencyExchange")
     if isinstance(currency_exchange, dict):
         extras["foreign_currency"] = currency_exchange.get("sourceCurrency")
 
-    # 4. Card Last 4
     ads = tx.get("additionalDataStructured")
     if isinstance(ads, dict):
         card_inst = ads.get("cardInstrument")
         if isinstance(card_inst, dict):
             extras["card_last4"] = card_inst.get("identification")
 
-    # 5. Counterparty Account
-    # Check creditor first, then debtor (assuming usually one is the 'other' party)
-    # Note: Logic might need refinement if 'debtor' is always the user for outgoing
-    # and 'creditor' for incoming. For now, grab whichever has a bban/iban that isn't
-    # empty.
-
-    # Actually, we want to know who the *other* party is.
-    # If amount is negative, user is debtor, so counterparty is creditorAccount.
-    # If amount is positive, user is creditor, so counterparty is debtorAccount.
-    # However, 'transactionAmount' isn't passed here easily without parsing again or
-    # passing it in. We'll just look for both and extracting the one that seems to be
-    # the external entity. Since we can't easily know which is 'us' without account
-    # context, we'll try to extract useful info from either.
-
+    # We attempt to identify the external entity (counterparty) by looking for
+    # an account identifier (IBAN/BBAN) in either the creditor or debtor fields.
+    # Since we don't have account context here to know if the user is the creditor
+    # or debtor, we extract whichever field is populated.
     creditor_acc = tx.get("creditorAccount", {})
     debtor_acc = tx.get("debtorAccount", {})
 
-    # Simplistic approach: Just grab IBAN or BBAN if present
     acc_id = (
         creditor_acc.get("bban")
         or creditor_acc.get("iban")
@@ -222,12 +197,28 @@ def _extract_extra_fields(tx: dict[str, Any]) -> dict[str, Any]:
 
 def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
     """Maps a raw dictionary to a Transaction object."""
-    # These are already checked in _deduplicate_and_validate, but safe to keep or
-    # assumes valid
+    # These are already checked in _deduplicate_and_validate
     internal_id = tx["internalTransactionId"]
     booking_date = date.fromisoformat(tx["bookingDate"])
 
-    # Handle amount
+    time_of_day: time = time(0, 0)
+    booking_dt_str = tx.get("bookingDateTime")
+    if booking_dt_str:
+        try:
+            dt = datetime.fromisoformat(booking_dt_str)
+            time_of_day = dt.time()
+
+            # Ensure data integrity between the date-only and date-time fields.
+            if dt.date() != booking_date:
+                logging.warning(
+                    f"Transaction {internal_id}: bookingDateTime {dt.date()} "
+                    f"does not match bookingDate {booking_date}."
+                )
+        except ValueError:
+            logging.warning(
+                f"Transaction {internal_id}: Invalid bookingDateTime format: {booking_dt_str}"
+            )
+
     amount_dict = tx.get("transactionAmount", {})
     try:
         amount = float(amount_dict.get("amount", 0))
@@ -245,9 +236,8 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
 
     extras = _extract_extra_fields(tx)
 
-    # We want to preserve all raw data that hasn't been extracted into first-class
-    # fields. This allows for future reprocessing or debugging without needing to
-    # re-fetch from the bank.
+    # Preserve raw data for future reprocessing/debugging, excluding fields that
+    # are already first-class citizens in the Transaction object.
     unmapped = tx.copy()
     mapped_keys = [
         "internalTransactionId",
@@ -257,13 +247,12 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
         "debtorName",
         "remittanceInformationUnstructuredArray",
         "remittanceInformationUnstructured",
-        # Extracted extra fields
         "bookingDateTime",
         "proprietaryBankTransactionCode",
         "currencyExchange",
         "creditorAccount",
         "debtorAccount",
-        # Safe to drop fields (technical or redundant)
+        # Technical or redundant fields
         "transactionId",
         "valueDate",
         "valueDateTime",
@@ -304,7 +293,7 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
         amount=amount,
         currency=currency,
         counterparty=counterparty,
-        time_of_day=extras["time_of_day"],
+        time_of_day=time_of_day,
         remittance=remittance,
         tx_type=extras["tx_type"],
         foreign_currency=extras["foreign_currency"],

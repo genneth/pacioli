@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from unittest.mock import MagicMock
 
 import pytest
@@ -43,7 +43,7 @@ def test_batch_process_llm_flow(temp_data_dir, mock_oai):
         id="tx1",
         account_id="acc1",
         booking_date=date(2023, 1, 1),
-        time_of_day="00:00",
+        time_of_day=time(0, 0),
         amount=10.0,
         currency="USD",
         counterparty="Store A",
@@ -57,7 +57,7 @@ def test_batch_process_llm_flow(temp_data_dir, mock_oai):
         id="tx2",
         account_id="acc1",
         booking_date=date(2023, 1, 1),
-        time_of_day="00:00",
+        time_of_day=time(0, 0),
         amount=1000.0,
         currency="USD",
         counterparty="Landlord",
@@ -97,7 +97,7 @@ def test_batch_process_llm_force_update(temp_data_dir, mock_oai):
         id="tx1",
         account_id="acc1",
         booking_date=date(2023, 1, 1),
-        time_of_day="00:00",
+        time_of_day=time(0, 0),
         amount=10.0,
         currency="USD",
         counterparty="Store A",

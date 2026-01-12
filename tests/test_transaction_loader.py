@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import time
 from typing import Any
 
 from transaction_loader import (
@@ -195,6 +196,7 @@ def test_map_single_transaction_robustness():
     res2 = _map_single_transaction("acc1", tx2)
     assert res2.amount == 0.0
     assert res2.currency == ""
+    assert res2.time_of_day == time(0, 0)
 
     # Case 3: Invalid Amount Value
     tx3 = base_tx.copy()
@@ -210,7 +212,7 @@ def test_map_single_transaction_robustness():
     tx4["bookingDateTime"] = "2023-01-01T15:00:00Z"
     res4 = _map_single_transaction("acc1", tx4)
 
-    assert res4.time_of_day == "15:00"
+    assert res4.time_of_day == time(15, 0)
     unmapped = json.loads(res4.unmapped)
     assert "extraField" in unmapped
     assert unmapped["extraField"] == "keepMe"
@@ -234,7 +236,6 @@ def test_extract_extra_fields():
         "creditorAccount": {"iban": "GB123"},
     }
     res = _extract_extra_fields(tx)
-    assert res["time_of_day"] == "12:34"
     assert res["tx_type"] == "CARD_PAYMENT"
     assert res["foreign_currency"] == "USD"
     assert res["card_last4"] == "1234"
@@ -246,13 +247,11 @@ def test_extract_extra_fields():
         "debtorAccount": {"bban": "BB456"},
     }
     res2 = _extract_extra_fields(tx2)
-    assert res2["time_of_day"] == "00:00"
     assert res2["counterparty_account"] == "BB456"
 
     # Empty case
     res3 = _extract_extra_fields({})
-    assert res3["time_of_day"] == "00:00"
-    assert all(v is None for k, v in res3.items() if k != "time_of_day")
+    assert all(v is None for k, v in res3.items())
 
 
 # --- Integration Test with Temporary Directory ---
