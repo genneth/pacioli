@@ -40,9 +40,10 @@ def test_batch_process_llm_flow(temp_data_dir, mock_oai):
 
     # tx1: Needs LLM (no match)
     tx1 = Transaction(
-        account_id="acc1",
         id="tx1",
+        account_id="acc1",
         booking_date=date(2023, 1, 1),
+        time_of_day="00:00",
         amount=10.0,
         currency="USD",
         counterparty="Store A",
@@ -53,9 +54,10 @@ def test_batch_process_llm_flow(temp_data_dir, mock_oai):
     # tx2: Already manual (should be skipped)
     tm.manual_assignments["tx2"] = {"clean_name": "Manual", "category": "Rent"}
     tx2 = Transaction(
-        account_id="acc1",
         id="tx2",
+        account_id="acc1",
         booking_date=date(2023, 1, 1),
+        time_of_day="00:00",
         amount=1000.0,
         currency="USD",
         counterparty="Landlord",
@@ -92,9 +94,10 @@ def test_batch_process_llm_force_update(temp_data_dir, mock_oai):
     tm.llm_cache["tx1"] = {"clean_name": "Old Name", "category": "Groceries"}
 
     tx1 = Transaction(
-        account_id="acc1",
         id="tx1",
+        account_id="acc1",
         booking_date=date(2023, 1, 1),
+        time_of_day="00:00",
         amount=10.0,
         currency="USD",
         counterparty="Store A",

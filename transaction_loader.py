@@ -8,13 +8,13 @@ from typing import Any
 
 @dataclass
 class Transaction:
-    account_id: str
     id: str
+    account_id: str
     booking_date: date
+    time_of_day: str
     amount: float
     currency: str
     counterparty: str
-    time_of_day: str
     remittance: str | None = None
     tx_type: str | None = None
     foreign_currency: str | None = None
