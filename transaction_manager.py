@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 import polars as pl
@@ -116,11 +116,11 @@ class TransactionManager:
 
             target_text = ""
             if p_field == "counterparty":
-                target_text = tx.counterparty
+                target_text = tx.counterparty or ""
             elif p_field == "remittance":
-                target_text = tx.remittance
+                target_text = tx.remittance or ""
             elif p_field == "any":
-                target_text = f"{tx.counterparty} {tx.remittance}"
+                target_text = f"{tx.counterparty or ''} {tx.remittance or ''}"
 
             if re.search(p_str, target_text, re.IGNORECASE):
                 pattern_matches.append(
@@ -238,11 +238,11 @@ class TransactionManager:
         for tx in transactions:
             target_text = ""
             if field == "counterparty":
-                target_text = tx.counterparty
+                target_text = tx.counterparty or ""
             elif field == "remittance":
-                target_text = tx.remittance
+                target_text = tx.remittance or ""
             elif field == "any":
-                target_text = f"{tx.counterparty} {tx.remittance}"
+                target_text = f"{tx.counterparty or ''} {tx.remittance or ''}"
 
             if re.search(pattern, target_text, re.IGNORECASE):
                 matches.append(
@@ -267,33 +267,45 @@ class TransactionManager:
         """
         all_txs = []
         for tx in transactions:
-            # Basic flattening
-            flat_tx = asdict(tx)
+            # Elide remittance where possible on a copy
+            cp = tx.counterparty
+            rm = tx.remittance
 
-            # Elide remittance where possible
-            cp = flat_tx.get("counterparty")
-            rm = flat_tx.get("remittance")
+            new_cp = cp
+            new_rm = rm
 
             if not cp:
                 if rm:
-                    flat_tx["counterparty"] = rm
-                    flat_tx["remittance"] = None
+                    new_cp = rm
+                    new_rm = None
                 else:
                     logging.warning(
                         f"Transaction {tx.id} has no counterparty or remittance data."
                     )
+                    new_cp = None
+                    new_rm = None
             else:
                 if rm:
                     if cp in rm:
-                        flat_tx["counterparty"] = rm
-                        flat_tx["remittance"] = None
+                        new_cp = rm
+                        new_rm = None
                     elif rm in cp:
-                        flat_tx["counterparty"] = cp
-                        flat_tx["remittance"] = None
-                # else:  # nothing to do
+                        new_cp = cp
+                        new_rm = None
+                else:
+                    new_rm = None
 
-            # Apply resolution
-            enrichment = self.resolve_transaction(tx)
+            # We use "" for the Transaction object to keep it robust for regex/matching
+            elided_tx = replace(tx, counterparty=new_cp or "", remittance=new_rm or "")
+
+            # Flatten via asdict and resolve
+            flat_tx = asdict(elided_tx)
+
+            # Use None for the final dataframe fields if they are empty
+            flat_tx["counterparty"] = new_cp or None
+            flat_tx["remittance"] = new_rm or None
+
+            enrichment = self.resolve_transaction(elided_tx)
             flat_tx.update(enrichment)
 
             all_txs.append(flat_tx)
