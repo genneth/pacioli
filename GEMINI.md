@@ -80,4 +80,5 @@ All commands should be run using `uv` to ensure the correct environment and depe
 *   **Data Frames (Polars):**
     *   Import convention: `from polars import col as C`
     *   Column selection: Use property access `C.column_name` instead of function call `C("column_name")` whenever possible.
-*   **Testing:** `pytest` is used for unit tests. Tests are located in `tests/`.
+*   **Testing:** `pytest` is used for unit tests. Tests are located in `tests/`. Best to use `uv run python -m pytest` instead of just `uv run pytest` to make all the paths Just Work.
+*   **Comments:** do not add comments which are just restating what the code is doing. Only add comments that explain _why_, and document assumptions and why the assumptions are justified.
