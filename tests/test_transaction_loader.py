@@ -229,7 +229,8 @@ def test_extract_extra_fields():
     tx = {
         "bookingDateTime": "2023-01-01T12:34:56.789Z",
         "proprietaryBankTransactionCode": "CARD_PAYMENT",
-        "currencyExchange": {"sourceCurrency": "USD"},
+        "currencyExchange": {"sourceCurrency": "GBP", "targetCurrency": "USD"},
+        "transactionAmount": {"currency": "GBP"},
         "additionalDataStructured": {
             "cardInstrument": {"identification": "1234"}
         },

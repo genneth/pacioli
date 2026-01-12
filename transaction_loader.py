@@ -168,7 +168,7 @@ def _extract_extra_fields(tx: dict[str, Any]) -> dict[str, Any]:
 
     currency_exchange = tx.get("currencyExchange")
     if isinstance(currency_exchange, dict):
-        extras["foreign_currency"] = currency_exchange.get("sourceCurrency")
+        extras["foreign_currency"] = currency_exchange.get("targetCurrency")
 
     ads = tx.get("additionalDataStructured")
     if isinstance(ads, dict):
