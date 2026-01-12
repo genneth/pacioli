@@ -344,16 +344,29 @@ class TransactionManager:
             tx_id = tx.get("id")
             booking_date = tx.get("booking_date")
             amount = tx.get("amount")
+            currency = tx.get("currency", "")
             counterparty = tx.get("counterparty") or "Unknown"
 
-            # enrich_transactions handles remittance deduplication
-            remittance_val = tx.get("remittance")
-            remittance_str = f"| Remittance: {remittance_val}" if remittance_val else ""
+            parts = [
+                f"ID: {tx_id}",
+                f"Date: {booking_date}",
+                f"Amt: {amount} {currency}",
+                f"Party: {counterparty}",
+            ]
 
-            tx_list_str += (
-                f"ID: {tx_id} | Date: {booking_date} | Amount: {amount} | "
-                f"Counterparty: {counterparty} {remittance_str}\n"
-            )
+            if remittance := tx.get("remittance"):
+                parts.append(f"Remit: {remittance}")
+
+            if tx_type := tx.get("tx_type"):
+                parts.append(f"Type: {tx_type}")
+
+            if f_curr := tx.get("foreign_currency"):
+                parts.append(f"F.Curr: {f_curr}")
+
+            if cp_acc := tx.get("counterparty_account"):
+                parts.append(f"Acc: {cp_acc}")
+
+            tx_list_str += " | ".join(parts) + "\n"
 
         categories_str = "\n".join(self.categories)
 

@@ -216,7 +216,8 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
                 )
         except ValueError:
             logging.warning(
-                f"Transaction {internal_id}: Invalid bookingDateTime format: {booking_dt_str}"
+                f"Transaction {internal_id}: Invalid bookingDateTime "
+                f"format: {booking_dt_str}"
             )
 
     amount_dict = tx.get("transactionAmount", {})
