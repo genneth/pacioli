@@ -89,7 +89,7 @@ class TransactionManager:
 
         matches: dict[str, Any] = {}  # source -> result
 
-        # 1. Check Manual Assignments
+        # 1. Manual Assignments: User overrides always take precedence
         if tx.id in self.manual_assignments:
             assign = self.manual_assignments[tx.id]
             matches["MANUAL"] = {
@@ -99,7 +99,7 @@ class TransactionManager:
                 "confidence": 1.0,
             }
 
-        # Check for Zero Amount
+        # 2. Zero Amount: Accounting artifacts or failed txs usually irrelevant
         if tx.amount == 0:
             matches["ZERO_AMOUNT"] = {
                 "clean_name": "Zero Amount",
@@ -108,7 +108,7 @@ class TransactionManager:
                 "confidence": 1.0,
             }
 
-        # 2. Check Patterns
+        # 3. Patterns: Regex rules for recurring/known merchants
         pattern_matches = []
         for pattern in self.patterns:
             p_str = pattern.get("pattern", "")
@@ -137,7 +137,7 @@ class TransactionManager:
             matches["PATTERN"] = pattern_matches[0]
             matches["_ALL_PATTERNS"] = pattern_matches
 
-        # 3. Check LLM Cache
+        # 4. LLM Cache: Fallback to previously AI-categorized results
         if tx.id in self.llm_cache:
             cached = self.llm_cache[tx.id]
             matches["AI_CACHED"] = {
@@ -171,6 +171,8 @@ class TransactionManager:
                 )
 
         # --- Hierarchy & Overlap Warnings ---
+        # We enforce a strict priority order to ensure deterministic and user-controlled
+        # categorization.
 
         final_result: dict[str, Any] = {
             "clean_name": None,
@@ -179,7 +181,7 @@ class TransactionManager:
             "confidence": 0.0,
         }
 
-        # Priority 1: Manual
+        # Priority 1: Manual - The user is always right.
         if "MANUAL" in matches:
             final_result = matches["MANUAL"]
             if "PATTERN" in matches:
@@ -192,17 +194,17 @@ class TransactionManager:
                     f"Transaction {tx.id}: Manual assignment overrides AI Cache"
                 )
 
-        # Priority 2: Zero Amount
+        # Priority 2: Zero Amount - Technical/failed txs are noise.
         elif "ZERO_AMOUNT" in matches:
             final_result = matches["ZERO_AMOUNT"]
 
-        # Priority 3: Pattern
+        # Priority 3: Pattern - Deterministic rules are cheaper and faster than AI.
         elif "PATTERN" in matches:
             final_result = matches["PATTERN"]
             if "AI_CACHED" in matches:
                 logging.info(f"Transaction {tx.id}: Pattern match overrides AI Cache")
 
-        # Priority 4: Cache
+        # Priority 4: Cache - Expensive/probabilistic AI result.
         elif "AI_CACHED" in matches:
             final_result = matches["AI_CACHED"]
 

@@ -109,12 +109,12 @@ def _deduplicate_and_validate(
             if not isinstance(tx, dict):
                 continue
 
-            # Check ID
+            # We need a stable ID to deduplicate across overlapping fetch windows
             internal_id = tx.get("internalTransactionId")
             if not internal_id:
                 continue
 
-            # Check Date
+            # We need a valid booking date to ensure the transaction can be ordered
             booking_date_str = tx.get("bookingDate")
             if not booking_date_str:
                 continue
@@ -127,7 +127,7 @@ def _deduplicate_and_validate(
                 )
                 continue
 
-            # Deduplicate
+            # Deduplicate by ID
             if internal_id in seen_ids:
                 continue
 
@@ -173,7 +173,9 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
         counterparty, remittance, internal_id
     )
 
-    # Capture unmapped data
+    # We want to preserve all raw data that hasn't been extracted into first-class
+    # fields. This allows for future reprocessing or debugging without needing to
+    # re-fetch from the bank.
     unmapped = tx.copy()
     mapped_keys = [
         "internalTransactionId",
@@ -183,9 +185,35 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
         "debtorName",
         "remittanceInformationUnstructuredArray",
         "remittanceInformationUnstructured",
+        # Safe to drop fields
+        "transactionId",
+        "valueDate",
+        "valueDateTime",
     ]
     for k in mapped_keys:
         unmapped.pop(k, None)
+
+    # Clean up additionalDataStructured if present
+    if "additionalDataStructured" in unmapped:
+        ads = unmapped["additionalDataStructured"]
+        if isinstance(ads, dict):
+            # Remove chargeAmount
+            ads.pop("chargeAmount", None)
+
+            # Clean up cardInstrument
+            if "cardInstrument" in ads:
+                ci = ads["cardInstrument"]
+                if isinstance(ci, dict):
+                    ci.pop("cardSchemeName", None)
+                    ci.pop("name", None)
+                    # If cardInstrument is now empty (only had dropped fields),
+                    # remove it
+                    if not ci:
+                        ads.pop("cardInstrument", None)
+
+            # If additionalDataStructured is now empty, remove it
+            if not ads:
+                unmapped.pop("additionalDataStructured", None)
 
     return Transaction(
         account_id=account_id,
@@ -233,6 +261,9 @@ def _elide_transaction_info(
     """
     Elides counterparty and remittance information to avoid duplication.
     If one contains the other, keep the longer one in counterparty and clear remittance.
+
+    This reduces token usage when sending data to the LLM and reduces visual noise
+    for the user.
     """
     new_cp = counterparty
     new_rm = remittance

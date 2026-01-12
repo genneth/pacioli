@@ -7,11 +7,16 @@ import requests
 from polars import col as C
 
 
-### Client class for GoCardless API
-### This class handles authentication, token management, and generic API requests
-### through GET and POST methods.
-### Upon initialization it will try to get a list of institutions after authentication.
 class Client:
+    """
+    A wrapper around the GoCardless Bank Account Data API (formerly Nordigen).
+    
+    Responsibilities:
+    - Handles OAuth2 token acquisition and refreshing.
+    - Manages persistence of tokens to `token.json` to minimize API calls.
+    - Provides authenticated wrappers for GET, POST, and DELETE methods.
+    - Fetches institution metadata on initialization to validate connectivity.
+    """
     _base_url = "https://bankaccountdata.gocardless.com/api/v2/"
     _secret_id = dotenv.get_key(".env", "GOCARDLESS_SECRET_ID")
     _secret_key = dotenv.get_key(".env", "GOCARDLESS_SECRET_KEY")
@@ -65,7 +70,6 @@ class Client:
             )
             return False
 
-    # GET with authorization
     def get(
         self,
         endpoint: str,
@@ -90,7 +94,6 @@ class Client:
             )
             return None
 
-    # POST with authorization
     def post(self, endpoint: str, data):
         if not self.token:
             logging.getLogger().info("No token")
@@ -112,7 +115,6 @@ class Client:
             )
             return None
 
-    # DELETE with authorization
     def delete(self, endpoint: str):
         if not self.token:
             logging.getLogger().info("No token")
