@@ -267,45 +267,10 @@ class TransactionManager:
         """
         all_txs = []
         for tx in transactions:
-            # Elide remittance where possible on a copy
-            cp = tx.counterparty
-            rm = tx.remittance
-
-            new_cp = cp
-            new_rm = rm
-
-            if not cp:
-                if rm:
-                    new_cp = rm
-                    new_rm = None
-                else:
-                    logging.warning(
-                        f"Transaction {tx.id} has no counterparty or remittance data."
-                    )
-                    new_cp = None
-                    new_rm = None
-            else:
-                if rm:
-                    if cp in rm:
-                        new_cp = rm
-                        new_rm = None
-                    elif rm in cp:
-                        new_cp = cp
-                        new_rm = None
-                else:
-                    new_rm = None
-
-            # We use "" for the Transaction object to keep it robust for regex/matching
-            elided_tx = replace(tx, counterparty=new_cp or "", remittance=new_rm or "")
-
             # Flatten via asdict and resolve
-            flat_tx = asdict(elided_tx)
+            flat_tx = asdict(tx)
 
-            # Use None for the final dataframe fields if they are empty
-            flat_tx["counterparty"] = new_cp or None
-            flat_tx["remittance"] = new_rm or None
-
-            enrichment = self.resolve_transaction(elided_tx)
+            enrichment = self.resolve_transaction(tx)
             flat_tx.update(enrichment)
 
             all_txs.append(flat_tx)

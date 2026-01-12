@@ -13,8 +13,8 @@ class Transaction:
     booking_date: date
     amount: float
     currency: str
-    counterparty: str
-    remittance: str
+    counterparty: str | None
+    remittance: str | None
     unmapped: str  # JSON string of the original raw data excluding mapped fields
 
 
@@ -169,6 +169,10 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
     counterparty = _get_counterparty(tx)
     remittance = _get_remittance(tx)
 
+    counterparty, remittance = _elide_transaction_info(
+        counterparty, remittance, internal_id
+    )
+
     # Capture unmapped data
     unmapped = tx.copy()
     mapped_keys = [
@@ -195,16 +199,16 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
     )
 
 
-def _get_counterparty(tx: dict[str, Any]) -> str:
+def _get_counterparty(tx: dict[str, Any]) -> str | None:
     """Merges creditor and debtor information."""
     creditor = tx.get("creditorName")
     debtor = tx.get("debtorName")
     if creditor and debtor:
         return f"FROM {debtor} TO {creditor}"
-    return creditor or debtor or ""
+    return creditor or debtor or None
 
 
-def _get_remittance(tx: dict[str, Any]) -> str:
+def _get_remittance(tx: dict[str, Any]) -> str | None:
     """Extracts and normalizes remittance information."""
     unstructured = tx.get("remittanceInformationUnstructured")
     unstructured_array = tx.get("remittanceInformationUnstructuredArray")
@@ -220,4 +224,39 @@ def _get_remittance(tx: dict[str, Any]) -> str:
         return "\n".join(unstructured_array)
     if unstructured:
         return str(unstructured)
-    return ""
+    return None
+
+
+def _elide_transaction_info(
+    counterparty: str | None, remittance: str | None, internal_id: str
+) -> tuple[str | None, str | None]:
+    """
+    Elides counterparty and remittance information to avoid duplication.
+    If one contains the other, keep the longer one in counterparty and clear remittance.
+    """
+    new_cp = counterparty
+    new_rm = remittance
+
+    if not counterparty:
+        if remittance:
+            new_cp = remittance
+            new_rm = None
+        else:
+            logging.warning(
+                f"Transaction {internal_id} has no counterparty or remittance data."
+            )
+            new_cp = None
+            new_rm = None
+    else:
+        if remittance:
+            # If one string is contained in the other, take the longer/richer one as counterparty
+            if counterparty in remittance:
+                new_cp = remittance
+                new_rm = None
+            elif remittance in counterparty:
+                new_cp = counterparty
+                new_rm = None
+        else:
+            new_rm = None
+
+    return new_cp, new_rm

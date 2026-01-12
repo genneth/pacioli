@@ -4,6 +4,7 @@ from typing import Any
 
 from transaction_loader import (
     _deduplicate_and_validate,
+    _elide_transaction_info,
     _get_counterparty,
     _get_remittance,
     _map_single_transaction,
@@ -11,6 +12,43 @@ from transaction_loader import (
 )
 
 # --- Unit Tests for Helper Functions ---
+
+
+def test_elide_transaction_info():
+    # 1. Match
+    cp, rm = _elide_transaction_info("STARBUCKS", "STARBUCKS", "tx1")
+    assert cp == "STARBUCKS"
+    assert rm is None
+
+    # 2. Differ
+    cp, rm = _elide_transaction_info("STARBUCKS", "COFFEE", "tx2")
+    assert cp == "STARBUCKS"
+    assert rm == "COFFEE"
+
+    # 3. Counterparty in Remittance (use longer)
+    cp, rm = _elide_transaction_info("AMZN", "AMZN MKTP", "tx3")
+    assert cp == "AMZN MKTP"
+    assert rm is None
+
+    # 4. Remittance in Counterparty (use longer)
+    cp, rm = _elide_transaction_info("STARBUCKS LONDON", "STARBUCKS", "tx4")
+    assert cp == "STARBUCKS LONDON"
+    assert rm is None
+
+    # 5. Counterparty missing (use remittance)
+    cp, rm = _elide_transaction_info(None, "ONLY REMITTANCE", "tx5")
+    assert cp == "ONLY REMITTANCE"
+    assert rm is None
+
+    # 6. Remittance missing
+    cp, rm = _elide_transaction_info("ONLY COUNTERPARTY", None, "tx6")
+    assert cp == "ONLY COUNTERPARTY"
+    assert rm is None
+
+    # 7. Both missing
+    cp, rm = _elide_transaction_info(None, None, "tx7")
+    assert cp is None
+    assert rm is None
 
 
 def test_get_counterparty_logic():
@@ -28,7 +66,7 @@ def test_get_counterparty_logic():
 
     # Case 4: Neither
     tx4: dict[str, Any] = {}
-    assert _get_counterparty(tx4) == ""
+    assert _get_counterparty(tx4) is None
 
 
 def test_get_remittance_logic(caplog):
@@ -53,11 +91,11 @@ def test_get_remittance_logic(caplog):
 
     # Case 4: Neither
     tx4: dict[str, Any] = {}
-    assert _get_remittance(tx4) == ""
+    assert _get_remittance(tx4) is None
 
     # Case 5: Empty Array
     tx5: dict[str, Any] = {"remittanceInformationUnstructuredArray": []}
-    assert _get_remittance(tx5) == ""
+    assert _get_remittance(tx5) is None
 
 
 # --- Unit Tests for Validation & Deduplication ---
