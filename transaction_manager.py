@@ -44,6 +44,7 @@ class TransactionManager:
         self.patterns: list[dict[str, str]] = []
         self.categories: list[str] = []
         self.llm_cache: dict[str, dict[str, Any]] = {}
+        self.transfer_map: dict[str, dict[str, Any]] = {}
 
         self.load_data()
 
@@ -80,6 +81,71 @@ class TransactionManager:
         with open(self.cache_file, "w") as f:
             json.dump(self.llm_cache, f, indent=2)
 
+    def detect_transfers(self, transactions: list[Transaction]) -> None:
+        """
+        Identifies transfers between accounts.
+        Populates self.transfer_map with transaction IDs identified as transfers.
+        """
+        self.transfer_map = {}  # Reset
+
+        # Group by amount for O(N) lookup
+        amount_map: dict[float, list[Transaction]] = {}
+        for tx in transactions:
+            amt = round(tx.amount, 2)
+            if amt not in amount_map:
+                amount_map[amt] = []
+            amount_map[amt].append(tx)
+
+        for tx in transactions:
+            if tx.id in self.transfer_map:
+                continue
+
+            # Look for opposite amount
+            target_amt = round(-tx.amount, 2)
+            candidates = amount_map.get(target_amt, [])
+
+            for cand in candidates:
+                if cand.id == tx.id:
+                    continue
+                if cand.id in self.transfer_map:
+                    continue
+                if cand.account_id == tx.account_id:
+                    continue  # Same account transfer? Unlikely for this use case
+
+                # Date check
+                if abs((tx.booking_date - cand.booking_date).days) > 3:
+                    continue
+
+                # Description check
+                # Both must likely involve the user's name to be safe
+                name_pattern = re.compile(r"SMITH", re.IGNORECASE)
+
+                tx_desc = (tx.counterparty or "") + " " + (tx.remittance or "")
+                cand_desc = (cand.counterparty or "") + " " + (cand.remittance or "")
+
+                match_tx = name_pattern.search(tx_desc)
+                match_cand = name_pattern.search(cand_desc)
+
+                if match_tx and match_cand:
+                    # Found a pair!
+                    self.transfer_map[tx.id] = {
+                        "clean_name": "Internal Transfer",
+                        "category": "Transfer",
+                        "source": "TRANSFER_MATCH",
+                        "confidence": 1.0,
+                        "linked_tx": cand.id,
+                    }
+                    self.transfer_map[cand.id] = {
+                        "clean_name": "Internal Transfer",
+                        "category": "Transfer",
+                        "source": "TRANSFER_MATCH",
+                        "confidence": 1.0,
+                        "linked_tx": tx.id,
+                    }
+                    # We continue to find potential other matches?
+                    # Usually pairs are unique. But let's just break for this tx.
+                    break
+
     def _find_matches(self, tx: Transaction) -> dict[str, Any]:
         """
         Internal method to find all possible matches for a transaction.
@@ -99,7 +165,11 @@ class TransactionManager:
                 "confidence": 1.0,
             }
 
-        # 2. Zero Amount: Accounting artifacts or failed txs usually irrelevant
+        # 2. Transfers: Detected internal movements
+        if tx.id in self.transfer_map:
+            matches["TRANSFER"] = self.transfer_map[tx.id]
+
+        # 3. Zero Amount: Accounting artifacts or failed txs usually irrelevant
         if tx.amount == 0:
             matches["ZERO_AMOUNT"] = {
                 "clean_name": "Zero Amount",
@@ -194,9 +264,17 @@ class TransactionManager:
                     f"Transaction {tx.id}: Manual assignment overrides AI Cache"
                 )
 
-        # Priority 2: Zero Amount - Technical/failed txs are noise.
+        # Priority 2: Transfers - Internal movements are distinct
+        elif "TRANSFER" in matches:
+            final_result = matches["TRANSFER"]
+            if "AI_CACHED" in matches:
+                logging.info(f"Transaction {tx.id}: Transfer match overrides AI Cache")
+
+        # Priority 3: Zero Amount - Technical/failed txs are noise.
         elif "ZERO_AMOUNT" in matches:
             final_result = matches["ZERO_AMOUNT"]
+            if "AI_CACHED" in matches:
+                logging.info(f"Transaction {tx.id}: Zero Amount overrides AI Cache")
 
         # Priority 3: Pattern - Deterministic rules are cheaper and faster than AI.
         elif "PATTERN" in matches:
@@ -267,6 +345,9 @@ class TransactionManager:
         Takes a list of Transactions and returns a flat Polars DataFrame with
         enrichment columns.
         """
+        # Run transfer detection first
+        self.detect_transfers(transactions)
+
         all_txs = []
         for tx in transactions:
             # Flatten via asdict and resolve
