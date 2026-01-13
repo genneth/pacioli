@@ -109,11 +109,11 @@ def test_transfer_detection(temp_data_dir):
     res5 = df.filter(C.id == "tx5").select("source").to_dicts()[0]
 
     assert res1["source"] == "TRANSFER_MATCH"
-    assert res1["category"] == "Transfer"
+    assert res1["category"] == "Transfers"
     assert res1["clean_name"] == "Internal Transfer"
 
     assert res2["source"] == "TRANSFER_MATCH"
-    assert res2["category"] == "Transfer"
+    assert res2["category"] == "Transfers"
     assert res2["clean_name"] == "Internal Transfer"
 
     # Should not be transfer

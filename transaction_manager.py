@@ -23,6 +23,8 @@ class TransactionResult(BaseModel):
     id: str
     clean_name: str
     category: str
+    suggested_category: str | None = None
+    reason: str | None = None
 
 
 class CategorizationResponse(BaseModel):
@@ -130,14 +132,14 @@ class TransactionManager:
                     # Found a pair!
                     self.transfer_map[tx.id] = {
                         "clean_name": "Internal Transfer",
-                        "category": "Transfer",
+                        "category": "Transfers",
                         "source": "TRANSFER_MATCH",
                         "confidence": 1.0,
                         "linked_tx": cand.id,
                     }
                     self.transfer_map[cand.id] = {
                         "clean_name": "Internal Transfer",
-                        "category": "Transfer",
+                        "category": "Transfers",
                         "source": "TRANSFER_MATCH",
                         "confidence": 1.0,
                         "linked_tx": tx.id,
@@ -415,14 +417,18 @@ class TransactionManager:
             # tx is a dict from Polars
             tx_id = tx.get("id")
             booking_date = tx.get("booking_date")
+            time_of_day = tx.get("time_of_day", "")
             amount = tx.get("amount")
             currency = tx.get("currency", "")
             counterparty = tx.get("counterparty") or "Unknown"
+            account_id = tx.get("account_id", "")
 
             parts = [
                 f"ID: {tx_id}",
                 f"Date: {booking_date}",
+                f"Time: {time_of_day}",
                 f"Amt: {amount} {currency}",
+                f"Acct: {account_id}",
                 f"Party: {counterparty}",
             ]
 
@@ -436,17 +442,39 @@ class TransactionManager:
                 parts.append(f"F.Curr: {f_curr}")
 
             if cp_acc := tx.get("counterparty_account"):
-                parts.append(f"Acc: {cp_acc}")
+                parts.append(f"CP Acc: {cp_acc}")
+
+            if card := tx.get("card_last4"):
+                parts.append(f"Card: {card}")
+
+            if unmapped := tx.get("unmapped"):
+                if unmapped != "{}":
+                    parts.append(f"Extra: {unmapped}")
 
             tx_list_str += " | ".join(parts) + "\n"
 
         categories_str = "\n".join(self.categories)
 
         prompt = f"""
-You are a financial assistant.
-Categorize the following transactions and provide a clean merchant name.
-Use ONLY the provided categories. If none fit perfectly, use the best available or
-"Uncategorized".
+You are an expert financial data analyst.
+Your task is to categorize the following transactions and identify a "Clean Name"
+(merchant or entity name).
+
+Guidelines:
+1. **Clean Name**: Extract the real merchant name (e.g., "Uber" from "Uber *Trip ..."). 
+   - Remove location codes, dates, and random identifiers.
+   - For individuals, use "First Last".
+   - For transfers, use "Transfer to/from X".
+2. **Category**: Choose the BEST fit from the provided list.
+   - Use "Time" to distinguish meals (Breakfast vs Lunch vs Dinner vs Nightlife).
+   - Use "Amt" to distinguish subscriptions (fixed/round #s) vs regular spending.
+   - Use "Extra" JSON data if standard fields are ambiguous.
+   - If no category fits well, use "Uncategorized".
+3. **Suggestions**: If you believe a NEW category is strictly necessary:
+   - Provide it in the 'suggested_category' field.
+   - Explain WHY in the 'reason' field.
+   - Still pick the best existing match (or "Uncategorized") for the 'category' field.
+
 
 Categories:
 {categories_str}
@@ -483,10 +511,17 @@ Transactions:
                         f"LLM returned unknown category '{category}' for {item.id}"
                     )
 
+                if item.suggested_category:
+                    logging.info(
+                        f"LLM suggested new category '{item.suggested_category}' for {item.id}. Reason: {item.reason}"
+                    )
+
                 self.llm_cache[item.id] = {
                     "clean_name": item.clean_name,
                     "category": category,
                     "confidence": 0.8,  # arbitrary confidence for LLM
+                    "suggested_category": item.suggested_category,
+                    "reason": item.reason,
                 }
 
         except Exception as e:
