@@ -325,16 +325,7 @@ class TransactionManager:
                 target_text = f"{tx.counterparty or ''} {tx.remittance or ''}"
 
             if re.search(pattern, target_text, re.IGNORECASE):
-                matches.append(
-                    {
-                        "tx_id": tx.id,
-                        "bookingDate": str(tx.booking_date),
-                        "amount": tx.amount,
-                        "counterparty": tx.counterparty,
-                        "remittance": tx.remittance,
-                        "matched_text": target_text,
-                    }
-                )
+                matches.append({"matched_text": target_text, **asdict(tx)})
         return matches
 
     def enrich_transactions(
