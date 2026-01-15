@@ -23,8 +23,9 @@ class TransactionResult(BaseModel):
     id: str
     clean_name: str
     category: str
+    category_reason: str
     suggested_category: str | None = None
-    reason: str | None = None
+    suggestion_reason: str | None = None
 
 
 class CategorizationResponse(BaseModel):
@@ -215,8 +216,11 @@ class TransactionManager:
             matches["AI_CACHED"] = {
                 "clean_name": cached.get("clean_name"),
                 "category": cached.get("category"),
+                "category_reason": cached.get("category_reason"),
                 "source": "AI_CACHED",
                 "confidence": cached.get("confidence", 0.7),
+                "suggested_category": cached.get("suggested_category"),
+                "suggestion_reason": cached.get("suggestion_reason"),
             }
 
         return matches
@@ -470,9 +474,10 @@ Guidelines:
    - Use "Amt" to distinguish subscriptions (fixed/round #s) vs regular spending.
    - Use "Extra" JSON data if standard fields are ambiguous.
    - If no category fits well, use "Uncategorized".
+   - **Explain your choice** in the 'category_reason' field (short note).
 3. **Suggestions**: If you believe a NEW category is strictly necessary:
    - Provide it in the 'suggested_category' field.
-   - Explain WHY in the 'reason' field.
+   - Explain WHY in the 'suggestion_reason' field.
    - Still pick the best existing match (or "Uncategorized") for the 'category' field.
 
 
@@ -513,15 +518,17 @@ Transactions:
 
                 if item.suggested_category:
                     logging.info(
-                        f"LLM suggested new category '{item.suggested_category}' for {item.id}. Reason: {item.reason}"
+                        f"LLM suggested new category '{item.suggested_category}' "
+                        f"for {item.id}. Reason: {item.suggestion_reason}"
                     )
 
                 self.llm_cache[item.id] = {
                     "clean_name": item.clean_name,
                     "category": category,
+                    "category_reason": item.category_reason,
                     "confidence": 0.8,  # arbitrary confidence for LLM
                     "suggested_category": item.suggested_category,
-                    "reason": item.reason,
+                    "suggestion_reason": item.suggestion_reason,
                 }
 
         except Exception as e:

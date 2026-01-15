@@ -20,7 +20,12 @@ def mock_oai():
     response_mock.choices = [MagicMock()]
     response_mock.choices[0].message.parsed = CategorizationResponse(
         transactions=[
-            TransactionResult(id="tx1", clean_name="Clean TX1", category="Groceries")
+            TransactionResult(
+                id="tx1",
+                clean_name="Clean TX1",
+                category="Groceries",
+                category_reason="Known grocery store",
+            )
         ]
     )
     mock.chat.completions.parse.return_value = response_mock
