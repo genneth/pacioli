@@ -358,7 +358,7 @@ class TransactionManager:
         if not all_txs:
             raise ValueError("No transactions to enrich.")
 
-        return pl.DataFrame(all_txs)
+        return pl.DataFrame(all_txs, infer_schema_length=None)
 
     def batch_process_llm(
         self,
