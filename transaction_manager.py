@@ -315,10 +315,10 @@ class TransactionManager:
 
     def test_pattern(
         self, transactions: list[Transaction], pattern: str, field: str = "counterparty"
-    ) -> list[dict]:
+    ) -> list[Transaction]:
         """
         Tests a regex pattern against a list of transactions.
-        Returns a list of matching transactions with details.
+        Returns a list of transactions matching the pattern.
         """
         matches = []
         for tx in transactions:
@@ -331,8 +331,34 @@ class TransactionManager:
                 target_text = f"{tx.counterparty or ''} {tx.remittance or ''}"
 
             if re.search(pattern, target_text, re.IGNORECASE):
-                matches.append({"matched_text": target_text, **asdict(tx)})
+                matches.append(tx)
         return matches
+
+    def purge_override_cache(self, transactions: list[Transaction]) -> int:
+        """
+        Removes entries from llm_cache if they are currently resolved via
+        MANUAL, PATTERN, TRANSFER_MATCH, or ZERO_AMOUNT.
+        """
+        # Ensure transfer map is up to date for this set of transactions
+        self.detect_transfers(transactions)
+
+        count = 0
+        for tx in transactions:
+            if tx.id in self.llm_cache:
+                # Check how it would resolve
+                resolution = self.resolve_transaction(tx)
+                source = resolution.get("source")
+
+                # If it resolves to something definitive that overrides cache
+                if source in ["MANUAL", "PATTERN", "TRANSFER_MATCH", "ZERO_AMOUNT"]:
+                    del self.llm_cache[tx.id]
+                    count += 1
+
+        if count > 0:
+            self.save_data()
+            logging.info(f"Purged {count} overridden entries from LLM cache.")
+
+        return count
 
     def enrich_transactions(
         self,
