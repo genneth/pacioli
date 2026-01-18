@@ -100,3 +100,75 @@ def test_zero_amount(temp_data_dir):
     )
     result = tm.resolve_transaction(tx)
     assert result["source"] == "ZERO_AMOUNT"
+
+
+def test_purge_override_cache(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+
+    # 1. Setup a transaction
+    tx_id = "tx_cached"
+    tx = Transaction(
+        id=tx_id,
+        account_id="acc1",
+        booking_date=date(2023, 1, 1),
+        time_of_day=time(0, 0),
+        amount=50.0,
+        currency="GBP",
+        counterparty="Some Shop",
+        remittance="Some Shop Remittance",
+        unmapped="{}",
+    )
+
+    # 2. Add to LLM cache
+    tm.llm_cache[tx_id] = {
+        "clean_name": "Cached Name",
+        "category": "Cached Category",
+        "source": "AI_CACHED",
+        "confidence": 0.8,
+    }
+    tm.save_data()
+
+    # Verify it is in cache
+    assert tx_id in tm.llm_cache
+
+    # 3. Add manual override
+    tm.update_manual(tx_id, "Manual Name", "Manual Category")
+
+    # 4. Run purge
+    tm.purge_override_cache([tx])
+
+    # 5. Assert removed from cache
+    assert tx_id not in tm.llm_cache
+
+
+def test_test_pattern_returns_transactions(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tx1 = Transaction(
+        id="tx1",
+        account_id="acc1",
+        booking_date=date(2023, 1, 1),
+        time_of_day=time(0, 0),
+        amount=10.0,
+        currency="USD",
+        counterparty="Target Match",
+        remittance="ref1",
+        unmapped="{}",
+    )
+    tx2 = Transaction(
+        id="tx2",
+        account_id="acc1",
+        booking_date=date(2023, 1, 1),
+        time_of_day=time(0, 0),
+        amount=20.0,
+        currency="USD",
+        counterparty="Other Store",
+        remittance="ref2",
+        unmapped="{}",
+    )
+
+    results = tm.test_pattern([tx1, tx2], "Match", field="counterparty")
+
+    assert isinstance(results, list)
+    assert len(results) == 1
+    assert isinstance(results[0], Transaction)
+    assert results[0].id == "tx1"
