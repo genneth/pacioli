@@ -24,7 +24,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
         1.  **Manual Overrides** (`data/manual_assignments.json`)
         2.  **Zero Amount Checks** (Ignored/Excluded)
         3.  **Regex Patterns** (`data/patterns.json`)
-        4.  **LLM Classification** (`data/llm_cache.json` via OpenAI)
+        4.  **LLM Classification** (`data/llm_cache.json` via Gemini)
     *   Outputs a flat **Polars DataFrame**.
 
 ### Configuration
@@ -45,13 +45,13 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 *   Python 3.13+
 *   `uv` (Universal Python Package Installer)
 *   GoCardless Account (Bank Account Data API)
-*   OpenAI API Key
+*   Google API Key (Gemini)
 
 ### Environment Variables (`.env`)
 ```toml
 GOCARDLESS_SECRET_ID = "..."
 GOCARDLESS_SECRET_KEY = "..."
-OPENAI_API_KEY = "..."
+GOOGLE_API_KEY = "..."
 ```
 
 ### Common Commands

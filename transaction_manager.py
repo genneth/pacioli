@@ -6,7 +6,7 @@ from dataclasses import asdict
 from typing import Any
 
 import polars as pl
-from openai import OpenAI
+from google import genai
 from pydantic import BaseModel
 
 from transaction_loader import Transaction
@@ -33,8 +33,8 @@ class CategorizationResponse(BaseModel):
 
 
 class TransactionManager:
-    def __init__(self, oai_client: OpenAI | None = None, data_dir: str = DATA_DIR):
-        self.oai = oai_client
+    def __init__(self, genai_client: genai.Client | None = None, data_dir: str = DATA_DIR):
+        self.client = genai_client
         self.data_dir = data_dir
         self.manual_assignments_file = os.path.join(
             self.data_dir, "manual_assignments.json"
@@ -392,11 +392,11 @@ class TransactionManager:
         force_update=False,
     ):
         """
-        Identifies unlabelled transactions and queries OpenAI.
+        Identifies unlabelled transactions and queries Gemini.
         Updates the cache and saves.
         """
-        if not self.oai:
-            logging.warning("No OpenAI client provided.")
+        if not self.client:
+            logging.warning("No Gemini client provided.")
             return
 
         if not transactions:
@@ -436,9 +436,9 @@ class TransactionManager:
 
     def _query_llm_chunk(self, tx_chunk: list[dict]):
         """
-        Helper to query OpenAI for a chunk of transactions.
+        Helper to query Gemini for a chunk of transactions.
         """
-        if not self.oai:
+        if not self.client:
             return
 
         # Prepare prompt
@@ -515,20 +515,17 @@ Transactions:
 """
 
         try:
-            response = self.oai.chat.completions.parse(
-                model="gpt-5.2-chat-latest",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful financial categorization "
-                        "assistant.",
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                response_format=CategorizationResponse,
+            response = self.client.models.generate_content(
+                model="gemini-flash-lite-latest",
+                contents=prompt,
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": CategorizationResponse,
+                },
             )
 
-            result: CategorizationResponse | None = response.choices[0].message.parsed
+            # Access the parsed result directly
+            result: CategorizationResponse | None = response.parsed
 
             if not result or not result.transactions:
                 logging.error("Empty or invalid response from LLM")

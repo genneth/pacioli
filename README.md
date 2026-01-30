@@ -19,10 +19,9 @@ This is effectively kept between GoCardless (through its requisitions and accoun
 dumps of the bank-provided json (in json files within the `raw` directory) -- with the inner
 directory name mapping to the GoCardless account id and therefore linking everything together.
 
-API keys are managed though [`dotenv`](https://github.com/theskumar/python-dotenv). Need to define
-the following to be able to get going:
+### Environment Variables (`.env`)
 ```toml
 GOCARDLESS_SECRET_ID = "..."
 GOCARDLESS_SECRET_KEY = "..."
-OPENAI_API_KEY = "..."
+GOOGLE_API_KEY = "..."
 ```
