@@ -27,6 +27,39 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
         4.  **LLM Classification** (`data/llm_cache.json` via Gemini)
     *   Outputs a flat **Polars DataFrame**.
 
+## Data Schema & Constraints
+
+### `data/categories.json`
+- **Format**: A flat list of strings.
+- **Hierarchy**: Use the `Parent > Child` convention (e.g., `Bills > Utilities`).
+- **Integrity**: This is the master reference. Every category assigned in other files **must** exist here.
+
+### `data/patterns.json`
+- **Format**: A list of objects used for regex-based categorization.
+- **Fields**:
+    - `pattern`: A regex string (applied case-insensitively).
+    - `field`: The transaction field to search. Valid values: `counterparty`, `remittance`, or `any` (both).
+    - `clean_name`: The "human-friendly" merchant or entity name.
+    - `category`: The category string (must exist in `categories.json`).
+
+### `data/manual_assignments.json`
+- **Format**: A dictionary mapping `internalTransactionId` to overrides.
+- **Fields**: `clean_name`, `category`.
+
+### `data/llm_cache.json`
+- **Format**: A dictionary caching Gemini's responses to avoid redundant API calls.
+- **Integrity**: Entries can be pruned using the `ops` skill if they become redundant or incorrect.
+
+## Large File Handling
+Some files in this project (e.g., `enriched_transactions.csv`, `llm_cache.json`) can grow very large. **Do not attempt to read these files entirely.**
+
+Instead, use Windows command-line tools or targeted tool calls to inspect subsets:
+- **Search CSV/JSON**: Use `search_file_content` with a pattern (e.g., a transaction ID or merchant name).
+- **Inspect CSV structure**: Use `run_shell_command` with `Get-Content -Head 10 enriched_transactions.csv`.
+- **Filtered inspection**: Use `Select-String` (PowerShell's grep) to find specific lines:
+  `Select-String "pattern" llm_cache.json | Select-Object -First 20`
+- **Paginated reading**: Use the `offset` and `limit` parameters in `read_file`.
+
 ### Configuration
 *   **Environment:** managed via `.env`.
 *   **Data Storage:**

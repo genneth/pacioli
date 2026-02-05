@@ -530,7 +530,7 @@ Transactions:
 
         try:
             response = self.client.models.generate_content(
-                model="gemini-3.0-flash",
+                model="gemini-3-flash-preview",
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",

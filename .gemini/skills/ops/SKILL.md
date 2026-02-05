@@ -45,3 +45,14 @@ Removes specific transaction IDs from the LLM cache. This is useful when the AI 
 **Workflow:**
 - Command: `uv run prune_cache.py <tx_id1> <tx_id2> ...`
 - **Verification:** Run `uv run enrich_transactions.py` afterwards to ensure the pruned transactions now show up as `null` source (ready for re-processing).
+
+### 4. Process LLM Labels
+Sends uncategorized transactions to Gemini for AI labeling.
+
+**Workflow:**
+- **Standard Run:** `uv run process_llm.py` (processes only new/uncategorized transactions).
+- **Force Relabel:** `uv run process_llm.py --force` (re-processes everything currently labeled as `AI_CACHED`).
+- **Verification:** Run `uv run enrich_transactions.py` to see the updated categorization summary.
+
+### 5. Audit & Pipeline Management (Coming Soon)
+Future tasks will include auditing LLM categorizations against regex patterns and promoting successful AI results to permanent rules.
