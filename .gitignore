@@ -15,8 +15,12 @@ wheels/
 # pacoli specific secrets
 token.json
 raw/
+data/
 
 # Tool caches
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+
+# gemini local settings
+.gemini/settings.json
