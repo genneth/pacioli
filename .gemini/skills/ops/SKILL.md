@@ -68,6 +68,8 @@ Dry-run a regex pattern against the transaction history to see what it would mat
 - **Basic Test:** `uv run test_pattern.py "my regex"` (searches `counterparty` field).
 - **Specific Field:** `uv run test_pattern.py "my regex" --field remittance`
 - **Any Field:** `uv run test_pattern.py "my regex" --field any`
+- **Amount Filter:** `uv run test_pattern.py "regex" --min-amount 100 --max-amount 500`
+- **Timing Filter:** `uv run test_pattern.py "regex" --min-day 25` (checks day of month)
 - **Verification:** Review the printed list of matches to ensure no false positives.
 
 ### 7. Identify Pattern Candidates

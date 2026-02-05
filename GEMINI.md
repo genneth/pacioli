@@ -41,6 +41,10 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
     - `field`: The transaction field to search. Valid values: `counterparty`, `remittance`, or `any` (both).
     - `clean_name`: The "human-friendly" merchant or entity name.
     - `category`: The category string (must exist in `categories.json`).
+    - `min_amount`: (Optional) Minimum absolute amount to match.
+    - `max_amount`: (Optional) Maximum absolute amount to match.
+    - `min_day`: (Optional) Minimum day of month (1-31) to match.
+    - `max_day`: (Optional) Maximum day of month (1-31) to match.
 
 ### `data/manual_assignments.json`
 - **Format**: A dictionary mapping `internalTransactionId` to overrides.

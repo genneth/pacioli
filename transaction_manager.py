@@ -46,7 +46,7 @@ class TransactionManager:
         self.cache_file = os.path.join(self.data_dir, "llm_cache.json")
 
         self.manual_assignments: dict[str, dict[str, str]] = {}
-        self.patterns: list[dict[str, str]] = []
+        self.patterns: list[dict[str, Any]] = []
         self.categories: list[str] = []
         self.llm_cache: dict[str, dict[str, Any]] = {}
         self.transfer_map: dict[str, dict[str, Any]] = {}
@@ -197,16 +197,38 @@ class TransactionManager:
             elif p_field == "any":
                 target_text = f"{tx.counterparty or ''} {tx.remittance or ''}"
 
-            if re.search(p_str, target_text, re.IGNORECASE):
-                pattern_matches.append(
-                    {
-                        "clean_name": pattern.get("clean_name"),
-                        "category": pattern.get("category"),
-                        "source": "PATTERN",
-                        "confidence": 0.9,
-                        "pattern_matched": p_str,
-                    }
-                )
+            # Check regex
+            if not re.search(p_str, target_text, re.IGNORECASE):
+                continue
+
+            # Check amount constraints
+            amt = abs(tx.amount)
+            min_amt = pattern.get("min_amount")
+            if min_amt is not None and amt < float(min_amt):
+                continue
+            
+            max_amt = pattern.get("max_amount")
+            if max_amt is not None and amt > float(max_amt):
+                continue
+
+            # Check timing constraints
+            min_day = pattern.get("min_day")
+            if min_day is not None and tx.booking_date.day < int(min_day):
+                continue
+            
+            max_day = pattern.get("max_day")
+            if max_day is not None and tx.booking_date.day > int(max_day):
+                continue
+
+            pattern_matches.append(
+                {
+                    "clean_name": pattern.get("clean_name"),
+                    "category": pattern.get("category"),
+                    "source": "PATTERN",
+                    "confidence": 0.9,
+                    "pattern_matched": p_str,
+                }
+            )
 
         if pattern_matches:
             matches["PATTERN"] = pattern_matches[0]
@@ -325,11 +347,17 @@ class TransactionManager:
         }
 
     def test_pattern(
-        self, transactions: list[Transaction], pattern: str, field: str = "counterparty"
+        self,
+        transactions: list[Transaction],
+        pattern: str,
+        field: str = "counterparty",
+        min_amount: float | None = None,
+        max_amount: float | None = None,
+        min_day: int | None = None,
     ) -> list[Transaction]:
         """
-        Tests a regex pattern against a list of transactions.
-        Returns a list of transactions matching the pattern.
+        Tests a regex pattern against a list of transactions with optional filters.
+        Returns a list of transactions matching the pattern and filters.
         """
         matches = []
         for tx in transactions:
@@ -341,8 +369,18 @@ class TransactionManager:
             elif field == "any":
                 target_text = f"{tx.counterparty or ''} {tx.remittance or ''}"
 
-            if re.search(pattern, target_text, re.IGNORECASE):
-                matches.append(tx)
+            if not re.search(pattern, target_text, re.IGNORECASE):
+                continue
+
+            amt = abs(tx.amount)
+            if min_amount is not None and amt < min_amount:
+                continue
+            if max_amount is not None and amt > max_amount:
+                continue
+            if min_day is not None and tx.booking_date.day < min_day:
+                continue
+
+            matches.append(tx)
         return matches
 
     def purge_override_cache(self, transactions: list[Transaction]) -> int:

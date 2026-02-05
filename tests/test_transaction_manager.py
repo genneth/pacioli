@@ -212,3 +212,75 @@ def test_test_pattern_returns_transactions(temp_data_dir):
     assert len(results) == 1
     assert isinstance(results[0], Transaction)
     assert results[0].id == "tx1"
+
+
+def test_pattern_matching_with_filters(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    
+    # Define a pattern with amount and day filters
+    tm.patterns.append({
+        "pattern": "Alimony",
+        "clean_name": "Alimony Payment",
+        "category": "Transfers > Alimony",
+        "min_amount": 3000,
+        "min_day": 25
+    })
+
+    # tx1 matches all criteria
+    tx1 = Transaction(
+        id="tx1", account_id="acc1", booking_date=date(2023, 1, 27),
+        time_of_day=time(0, 0), amount=-3500.0, currency="GBP",
+        counterparty="Alimony Test", remittance="ref", unmapped="{}"
+    )
+    
+    # tx2 matches regex but too small amount
+    tx2 = Transaction(
+        id="tx2", account_id="acc1", booking_date=date(2023, 1, 27),
+        time_of_day=time(0, 0), amount=-500.0, currency="GBP",
+        counterparty="Alimony Test", remittance="ref", unmapped="{}"
+    )
+    
+    # tx3 matches regex but too early in month
+    tx3 = Transaction(
+        id="tx3", account_id="acc1", booking_date=date(2023, 1, 10),
+        time_of_day=time(0, 0), amount=-3500.0, currency="GBP",
+        counterparty="Alimony Test", remittance="ref", unmapped="{}"
+    )
+
+    assert tm.resolve_transaction(tx1)["clean_name"] == "Alimony Payment"
+    assert tm.resolve_transaction(tx2)["clean_name"] is None
+    assert tm.resolve_transaction(tx3)["clean_name"] is None
+
+    # Test max filters too
+    tm.patterns = [{
+        "pattern": "Expenses",
+        "clean_name": "Reimbursement",
+        "category": "Income > Expenses",
+        "max_amount": 500,
+        "max_day": 15
+    }]
+    
+    # tx4 matches max filters
+    tx4 = Transaction(
+        id="tx4", account_id="acc1", booking_date=date(2023, 1, 10),
+        time_of_day=time(0, 0), amount=100.0, currency="GBP",
+        counterparty="Expenses Test", remittance="ref", unmapped="{}"
+    )
+    
+    # tx5 fails max_amount
+    tx5 = Transaction(
+        id="tx5", account_id="acc1", booking_date=date(2023, 1, 10),
+        time_of_day=time(0, 0), amount=600.0, currency="GBP",
+        counterparty="Expenses Test", remittance="ref", unmapped="{}"
+    )
+    
+    # tx6 fails max_day
+    tx6 = Transaction(
+        id="tx6", account_id="acc1", booking_date=date(2023, 1, 20),
+        time_of_day=time(0, 0), amount=100.0, currency="GBP",
+        counterparty="Expenses Test", remittance="ref", unmapped="{}"
+    )
+
+    assert tm.resolve_transaction(tx4)["clean_name"] == "Reimbursement"
+    assert tm.resolve_transaction(tx5)["clean_name"] is None
+    assert tm.resolve_transaction(tx6)["clean_name"] is None

@@ -16,6 +16,9 @@ def main():
         default="counterparty",
         help="Field to match against",
     )
+    parser.add_argument("--min-amount", type=float, help="Minimum absolute amount")
+    parser.add_argument("--max-amount", type=float, help="Maximum absolute amount")
+    parser.add_argument("--min-day", type=int, help="Minimum day of month (1-31)")
     args = parser.parse_args()
 
     # Keep logging quiet to focus on output
@@ -23,7 +26,14 @@ def main():
     rows = load_transactions()
     tm = TransactionManager()
     
-    matches = tm.test_pattern(rows, args.pattern, field=args.field)
+    matches = tm.test_pattern(
+        rows,
+        args.pattern,
+        field=args.field,
+        min_amount=args.min_amount,
+        max_amount=args.max_amount,
+        min_day=args.min_day,
+    )
     
     print(f"\nPattern: '{args.pattern}' (field: {args.field})")
     print(f"Found {len(matches)} matches.")
