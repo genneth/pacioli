@@ -32,7 +32,9 @@ def load_transactions(data_dir: str = "raw") -> list[Transaction]:
     """
     raw_dumps = _load_raw_json_files(data_dir)
     validated_data = _deduplicate_and_validate(raw_dumps)
-    return _map_to_transactions(validated_data)
+    txs = _map_to_transactions(validated_data)
+    logging.info(f"Successfully loaded {len(txs)} unique transactions.")
+    return txs
 
 
 def get_latest_booking_dates(data_dir: str = "raw") -> dict[str, date]:
@@ -43,15 +45,11 @@ def get_latest_booking_dates(data_dir: str = "raw") -> dict[str, date]:
     raw_dumps = _load_raw_json_files(data_dir)
     validated_data = _deduplicate_and_validate(raw_dumps)
 
-    max_dates = {}
-    for account, txs in validated_data.items():
-        if not txs:
-            continue
-        # We can safely parse because _deduplicate_and_validate checked the format
-        latest = max(date.fromisoformat(tx["bookingDate"]) for tx in txs)
-        max_dates[account] = latest
-
-    return max_dates
+    return {
+        account: max(date.fromisoformat(tx["bookingDate"]) for tx in txs)
+        for account, txs in validated_data.items()
+        if txs
+    }
 
 
 def _load_raw_json_files(data_dir: str) -> dict[str, list[dict]]:
@@ -61,24 +59,36 @@ def _load_raw_json_files(data_dir: str) -> dict[str, list[dict]]:
     if not os.path.exists(data_dir):
         return raw_dumps
 
-    for account in os.listdir(data_dir):
-        account_path = os.path.join(data_dir, account)
-        if not os.path.isdir(account_path):
-            continue
+    # Pre-collect all files to enable tqdm progress bar
+    all_files = [
+        (account, file_name)
+        for account in os.listdir(data_dir)
+        if os.path.isdir(account_path := os.path.join(data_dir, account))
+        for file_name in os.listdir(account_path)
+        if file_name.endswith(".json")
+    ]
 
-        raw_dumps[account] = []
-        for file_name in os.listdir(account_path):
-            if not file_name.endswith(".json"):
-                continue
+    from tqdm import tqdm
 
-            file_path = os.path.join(account_path, file_name)
-            try:
-                with open(file_path, encoding="utf-8") as f:
-                    data = json.load(f)
-                    raw_dumps[account].append(data)
-                    logging.info(f"Loaded {file_name} for account {account}.")
-            except json.JSONDecodeError:
-                logging.error(f"Failed to decode JSON from {file_name}")
+    account_file_counts: dict[str, int] = {}
+    for account, file_name in tqdm(
+        all_files, desc="Loading raw transactions", unit="file", leave=False
+    ):
+        if account not in raw_dumps:
+            raw_dumps[account] = []
+            account_file_counts[account] = 0
+
+        file_path = os.path.join(data_dir, account, file_name)
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                data = json.load(f)
+                raw_dumps[account].append(data)
+                account_file_counts[account] += 1
+        except json.JSONDecodeError:
+            logging.error(f"Failed to decode JSON from {file_name}")
+
+    for account, count in account_file_counts.items():
+        logging.info(f"Loaded {count} files for account {account}.")
 
     return raw_dumps
 
@@ -146,13 +156,12 @@ def _deduplicate_and_validate(
 
 def _map_to_transactions(validated_data: dict[str, list[dict]]) -> list[Transaction]:
     """Converts validated transaction dicts into Transaction objects."""
-    all_rows = []
-    for account_id, txs in validated_data.items():
-        for tx in txs:
-            transaction_obj = _map_single_transaction(account_id, tx)
-            if transaction_obj:
-                all_rows.append(transaction_obj)
-    return all_rows
+    return [
+        transaction_obj
+        for account_id, txs in validated_data.items()
+        for tx in txs
+        if (transaction_obj := _map_single_transaction(account_id, tx))
+    ]
 
 
 def _extract_extra_fields(tx: dict[str, Any]) -> dict[str, Any]:

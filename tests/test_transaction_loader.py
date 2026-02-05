@@ -231,9 +231,7 @@ def test_extract_extra_fields():
         "proprietaryBankTransactionCode": "CARD_PAYMENT",
         "currencyExchange": {"sourceCurrency": "GBP", "targetCurrency": "USD"},
         "transactionAmount": {"currency": "GBP"},
-        "additionalDataStructured": {
-            "cardInstrument": {"identification": "1234"}
-        },
+        "additionalDataStructured": {"cardInstrument": {"identification": "1234"}},
         "creditorAccount": {"iban": "GB123"},
     }
     res = _extract_extra_fields(tx)
@@ -325,5 +323,5 @@ def test_load_transactions_integration(tmp_path, caplog):
     # 2. Check Logs
     # Should see error for garbage.json
     assert "Failed to decode JSON" in caplog.text
-    # Should see loaded info for valid files
-    assert "Loaded 2023-01-01.json" in caplog.text
+    # Should see loaded info summary for account
+    assert "Loaded 2 files for account acc1" in caplog.text

@@ -10,13 +10,14 @@ from polars import col as C
 class Client:
     """
     A wrapper around the GoCardless Bank Account Data API (formerly Nordigen).
-    
+
     Responsibilities:
     - Handles OAuth2 token acquisition and refreshing.
     - Manages persistence of tokens to `token.json` to minimize API calls.
     - Provides authenticated wrappers for GET, POST, and DELETE methods.
     - Fetches institution metadata on initialization to validate connectivity.
     """
+
     _base_url = "https://bankaccountdata.gocardless.com/api/v2/"
     _secret_id = dotenv.get_key(".env", "GOCARDLESS_SECRET_ID")
     _secret_key = dotenv.get_key(".env", "GOCARDLESS_SECRET_KEY")

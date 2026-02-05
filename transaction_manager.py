@@ -33,7 +33,9 @@ class CategorizationResponse(BaseModel):
 
 
 class TransactionManager:
-    def __init__(self, genai_client: genai.Client | None = None, data_dir: str = DATA_DIR):
+    def __init__(
+        self, genai_client: genai.Client | None = None, data_dir: str = DATA_DIR
+    ):
         self.client = genai_client
         self.data_dir = data_dir
         self.manual_assignments_file = os.path.join(
@@ -133,14 +135,14 @@ class TransactionManager:
                     # Found a pair!
                     self.transfer_map[tx.id] = {
                         "clean_name": "Internal Transfer",
-                        "category": "Transfers",
+                        "category": "Transfers > Matched",
                         "source": "TRANSFER_MATCH",
                         "confidence": 1.0,
                         "linked_tx": cand.id,
                     }
                     self.transfer_map[cand.id] = {
                         "clean_name": "Internal Transfer",
-                        "category": "Transfers",
+                        "category": "Transfers > Matched",
                         "source": "TRANSFER_MATCH",
                         "confidence": 1.0,
                         "linked_tx": tx.id,
@@ -296,6 +298,15 @@ class TransactionManager:
         if "pattern_matched" in final_result:
             del final_result["pattern_matched"]
 
+        # Warning for unknown categories
+        category = final_result.get("category")
+        source = final_result.get("source")
+        if category and category not in self.categories and category != "Uncategorized":
+            logging.warning(
+                f"Transaction {tx.id} resolved to unknown category "
+                f"'{category}' from {source}"
+            )
+
         return final_result
 
     def explain_transaction(self, tx: Transaction) -> dict[str, Any]:
@@ -428,7 +439,10 @@ class TransactionManager:
         logging.info(f"Sending {len(to_process)} transactions to LLM...")
 
         # Chunking to avoid context limits
-        chunk_size = 50
+        # Gemini 3.0 Flash has a 64k output token limit.
+        # ~150 txs * ~200 tokens/tx (conservative) = 30k tokens output.
+        # This leaves a safe buffer.
+        chunk_size = 150
         for i in range(0, len(to_process), chunk_size):
             chunk = to_process[i : i + chunk_size]
             self._query_llm_chunk(chunk)
@@ -516,7 +530,7 @@ Transactions:
 
         try:
             response = self.client.models.generate_content(
-                model="gemini-flash-lite-latest",
+                model="gemini-3.0-flash",
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",
@@ -525,20 +539,15 @@ Transactions:
             )
 
             # Access the parsed result directly
-            result: CategorizationResponse | None = response.parsed
+            from typing import cast
+
+            result = cast(CategorizationResponse | None, response.parsed)
 
             if not result or not result.transactions:
                 logging.error("Empty or invalid response from LLM")
                 return
 
             for item in result.transactions:
-                # Validate category is in our allowed list, fallback if LLM hallucinated
-                category = item.category
-                if category not in self.categories and category != "Uncategorized":
-                    logging.warning(
-                        f"LLM returned unknown category '{category}' for {item.id}"
-                    )
-
                 if item.suggested_category:
                     logging.info(
                         f"LLM suggested new category '{item.suggested_category}' "
@@ -547,7 +556,7 @@ Transactions:
 
                 self.llm_cache[item.id] = {
                     "clean_name": item.clean_name,
-                    "category": category,
+                    "category": item.category,
                     "category_reason": item.category_reason,
                     "confidence": 0.8,  # arbitrary confidence for LLM
                     "suggested_category": item.suggested_category,

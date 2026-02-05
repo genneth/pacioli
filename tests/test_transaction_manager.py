@@ -1,3 +1,4 @@
+import logging
 from datetime import date, time
 
 import pytest
@@ -12,6 +13,31 @@ def temp_data_dir(tmp_path):
     d = tmp_path / "data"
     d.mkdir()
     return str(d)
+
+
+def test_unknown_category_warning(temp_data_dir, caplog):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.categories = ["Groceries"]  # Only Groceries is allowed
+
+    # tx1 matched to something not in categories
+    tm.update_manual("tx1", "Manual Name", "Unknown Category")
+
+    tx = Transaction(
+        id="tx1",
+        account_id="acc1",
+        booking_date=date(2023, 1, 1),
+        time_of_day=time(0, 0),
+        amount=100.0,
+        currency="GBP",
+        counterparty="Unknown",
+        remittance="Unknown",
+        unmapped="{}",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        tm.resolve_transaction(tx)
+
+    assert "resolved to unknown category 'Unknown Category'" in caplog.text
 
 
 def test_enrich_transactions_structure(temp_data_dir):

@@ -12,13 +12,11 @@ from transaction_manager import (
 
 
 @pytest.fixture
-def mock_oai():
+def mock_genai():
     mock = MagicMock()
-    # Mock the chain: client.chat.completions.parse
-    # We need to simulate the response structure structure
+    # Mock the chain: client.models.generate_content().parsed
     response_mock = MagicMock()
-    response_mock.choices = [MagicMock()]
-    response_mock.choices[0].message.parsed = CategorizationResponse(
+    response_mock.parsed = CategorizationResponse(
         transactions=[
             TransactionResult(
                 id="tx1",
@@ -28,7 +26,7 @@ def mock_oai():
             )
         ]
     )
-    mock.chat.completions.parse.return_value = response_mock
+    mock.models.generate_content.return_value = response_mock
     return mock
 
 
@@ -39,8 +37,8 @@ def temp_data_dir(tmp_path):
     return str(d)
 
 
-def test_batch_process_llm_flow(temp_data_dir, mock_oai):
-    tm = TransactionManager(oai_client=mock_oai, data_dir=temp_data_dir)
+def test_batch_process_llm_flow(temp_data_dir, mock_genai):
+    tm = TransactionManager(genai_client=mock_genai, data_dir=temp_data_dir)
     tm.categories = ["Groceries", "Rent"]
 
     # tx1: Needs LLM (no match)
@@ -73,17 +71,16 @@ def test_batch_process_llm_flow(temp_data_dir, mock_oai):
     tm.batch_process_llm([tx1, tx2])
 
     # Check if LLM was called
-    mock_oai.chat.completions.parse.assert_called_once()
+    mock_genai.models.generate_content.assert_called_once()
 
     # Verify the prompt contains tx1 but NOT tx2
-    call_args = mock_oai.chat.completions.parse.call_args
+    call_args = mock_genai.models.generate_content.call_args
     kwargs = call_args.kwargs
-    messages = kwargs["messages"]
-    user_content = messages[1]["content"]
+    prompt = kwargs["contents"]
 
-    assert "ID: tx1" in user_content
-    assert "Store A" in user_content
-    assert "ID: tx2" not in user_content
+    assert "ID: tx1" in prompt
+    assert "Store A" in prompt
+    assert "ID: tx2" not in prompt
 
     # Check if cache was updated
     assert "tx1" in tm.llm_cache
@@ -91,8 +88,8 @@ def test_batch_process_llm_flow(temp_data_dir, mock_oai):
     assert tm.llm_cache["tx1"]["category"] == "Groceries"
 
 
-def test_batch_process_llm_force_update(temp_data_dir, mock_oai):
-    tm = TransactionManager(oai_client=mock_oai, data_dir=temp_data_dir)
+def test_batch_process_llm_force_update(temp_data_dir, mock_genai):
+    tm = TransactionManager(genai_client=mock_genai, data_dir=temp_data_dir)
     tm.categories = ["Groceries"]
 
     # tx1: Already cached
@@ -112,8 +109,8 @@ def test_batch_process_llm_force_update(temp_data_dir, mock_oai):
 
     # Call without force_update -> should NOT call LLM
     tm.batch_process_llm([tx1], force_update=False)
-    mock_oai.chat.completions.parse.assert_not_called()
+    mock_genai.models.generate_content.assert_not_called()
 
     # Call WITH force_update -> SHOULD call LLM
     tm.batch_process_llm([tx1], force_update=True)
-    mock_oai.chat.completions.parse.assert_called_once()
+    mock_genai.models.generate_content.assert_called_once()

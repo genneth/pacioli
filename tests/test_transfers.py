@@ -13,6 +13,7 @@ def temp_data_dir(tmp_path):
     d.mkdir()
     return str(d)
 
+
 def test_transfer_detection(temp_data_dir):
     tm = TransactionManager(data_dir=temp_data_dir)
 
@@ -89,10 +90,10 @@ def test_transfer_detection(temp_data_dir):
     )
 
     transactions = [tx1, tx2, tx3, tx4, tx5, tx6]
-    
+
     # Process
     df = tm.enrich_transactions(transactions)
-    
+
     # Check results
     res1 = (
         df.filter(C.id == "tx1")
@@ -109,11 +110,11 @@ def test_transfer_detection(temp_data_dir):
     res5 = df.filter(C.id == "tx5").select("source").to_dicts()[0]
 
     assert res1["source"] == "TRANSFER_MATCH"
-    assert res1["category"] == "Transfers"
+    assert res1["category"] == "Transfers > Matched"
     assert res1["clean_name"] == "Internal Transfer"
 
     assert res2["source"] == "TRANSFER_MATCH"
-    assert res2["category"] == "Transfers"
+    assert res2["category"] == "Transfers > Matched"
     assert res2["clean_name"] == "Internal Transfer"
 
     # Should not be transfer
