@@ -45,9 +45,6 @@ The `TransactionManager` class in `transaction_manager.py` provides the followin
 *   **`enrich_transactions(transactions)`**: The primary pipeline. Takes a list of raw transactions and returns a categorized Polars DataFrame, applying the hierarchy (Manual > Transfer > Zero > Pattern > AI).
 *   **`batch_process_llm(transactions)`**: Identifies transactions that haven't been categorized by other means and sends them to Gemini for AI classification. Updates the local `llm_cache.json`.
 *   **`detect_transfers(transactions)`**: Scans for matching transaction pairs (opposite amounts, nearby dates, user name in description) and marks them as "Internal Transfers".
-*   **`update_manual(tx_id, clean_name, category)`**: Creates a manual override for a specific transaction ID, which will always take precedence.
-*   **`add_pattern(pattern, clean_name, category, field)`**: Adds a new regex rule to `patterns.json` to handle recurring transactions.
-*   **`add_category(category)`**: Registers a new allowed category in `categories.json`.
 *   **`test_pattern(transactions, pattern, field)`**: Dry-run a regex pattern against a set of transactions to see what it would match before saving it.
 *   **`purge_override_cache(transactions)`**: Optimizes storage by removing LLM cache entries for transactions that are now covered by more deterministic rules (Manual, Pattern, etc.).
 *   **`explain_transaction(tx)`**: Provides a detailed diagnostic trace of how a specific transaction would be resolved, showing all matching rules and the final selection.

@@ -565,35 +565,3 @@ Transactions:
 
         except Exception as e:
             logging.error(f"Error querying LLM: {e}")
-
-    def update_manual(self, tx_id: str, clean_name: str, category: str):
-        """Manually verify/update a transaction."""
-        self.manual_assignments[tx_id] = {
-            "clean_name": clean_name,
-            "category": category,
-        }
-        self.save_data()
-
-    def add_pattern(
-        self,
-        pattern: str,
-        clean_name: str,
-        category: str,
-        field: str = "counterparty",
-    ):
-        """Add a regex pattern."""
-        self.patterns.append(
-            {
-                "pattern": pattern,
-                "field": field,
-                "clean_name": clean_name,
-                "category": category,
-            }
-        )
-        self.save_data()
-
-    def add_category(self, category: str):
-        """Add a new category if it doesn't exist."""
-        if category not in self.categories:
-            self.categories.append(category)
-            self.save_data()

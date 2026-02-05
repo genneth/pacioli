@@ -20,7 +20,7 @@ def test_unknown_category_warning(temp_data_dir, caplog):
     tm.categories = ["Groceries"]  # Only Groceries is allowed
 
     # tx1 matched to something not in categories
-    tm.update_manual("tx1", "Manual Name", "Unknown Category")
+    tm.manual_assignments["tx1"] = {"clean_name": "Manual Name", "category": "Unknown Category"}
 
     tx = Transaction(
         id="tx1",
@@ -70,7 +70,12 @@ def test_enrich_transactions_structure(temp_data_dir):
 def test_resolve_transaction_pattern_matching(temp_data_dir):
     tm = TransactionManager(data_dir=temp_data_dir)
     # Add a pattern that matches the joined remittance
-    tm.add_pattern("part1\npart2", "Clean Name", "Test Category", field="remittance")
+    tm.patterns.append({
+        "pattern": "part1\npart2",
+        "clean_name": "Clean Name",
+        "category": "Test Category",
+        "field": "remittance"
+    })
 
     tx = Transaction(
         id="tx1",
@@ -92,7 +97,7 @@ def test_resolve_transaction_pattern_matching(temp_data_dir):
 
 def test_manual_override(temp_data_dir):
     tm = TransactionManager(data_dir=temp_data_dir)
-    tm.update_manual("tx1", "Manual Name", "Manual Cat")
+    tm.manual_assignments["tx1"] = {"clean_name": "Manual Name", "category": "Manual Cat"}
 
     tx = Transaction(
         id="tx1",
@@ -158,7 +163,7 @@ def test_purge_override_cache(temp_data_dir):
     assert tx_id in tm.llm_cache
 
     # 3. Add manual override
-    tm.update_manual(tx_id, "Manual Name", "Manual Category")
+    tm.manual_assignments[tx_id] = {"clean_name": "Manual Name", "category": "Manual Category"}
 
     # 4. Run purge
     tm.purge_override_cache([tx])

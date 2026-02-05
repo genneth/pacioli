@@ -51,10 +51,6 @@ def main():
                 ["booking_date", "amount", "counterparty", "remittance"]
             ).head(5)
         )
-        print(
-            "\nRun the LLM processing cell in interactive.ipynb or a "
-            "dedicated LLM script to categorize them."
-        )
     else:
         print("\n[SUCCESS] All transactions are categorized.")
 
