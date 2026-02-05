@@ -118,7 +118,12 @@ All commands should be run using `uv` to ensure the correct environment and depe
     ```
 
 ## Development Conventions
-*   **Data Integrity:** Never modify files in `raw/` manually. If data needs to be fixed, use the `TransactionManager` to create a manual assignment or pattern override.
+
+*   **Security First:** NEVER commit personal data, transaction history, or sensitive configuration files. Files in `raw/`, `data/`, and all `.csv` files are explicitly ignored in `.gitignore`. If you modify the structure of these files, ensure you are testing with mock data or non-sensitive samples.
+
+*   **Data Integrity:** Never modify files in `raw/` manually.
+
+ If data needs to be fixed, use the `TransactionManager` to create a manual assignment or pattern override.
 *   **Type Safety:** Uses `pydantic` for data validation and `mypy` for static analysis.
 *   **Data Frames (Polars):**
     *   Import convention: `from polars import col as C`

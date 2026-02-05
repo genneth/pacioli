@@ -25,3 +25,6 @@ data/
 
 # gemini local settings
 .gemini/settings.json
+
+# vscode settings
+.vscode/

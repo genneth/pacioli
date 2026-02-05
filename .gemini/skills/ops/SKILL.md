@@ -46,7 +46,14 @@ Removes specific transaction IDs from the LLM cache. This is useful when the AI 
 - Command: `uv run prune_cache.py <tx_id1> <tx_id2> ...`
 - **Verification:** Run `uv run enrich_transactions.py` afterwards to ensure the pruned transactions now show up as `null` source (ready for re-processing).
 
-### 4. Process LLM Labels
+### 4. Cleanup LLM Cache
+Automatically removes AI cache entries that are now covered by more deterministic rules (Manual, Patterns, Transfers, or Zero Amount). This keeps the cache lean and ensures deterministic rules always win.
+
+**Workflow:**
+- Command: `uv run cleanup_cache.py`
+- **Verification:** Run `uv run enrich_transactions.py`. You should no longer see "Pattern match overrides AI Cache" info messages for those transactions.
+
+### 5. Process LLM Labels
 Sends uncategorized transactions to Gemini for AI labeling.
 
 **Workflow:**
@@ -54,5 +61,20 @@ Sends uncategorized transactions to Gemini for AI labeling.
 - **Force Relabel:** `uv run process_llm.py --force` (re-processes everything currently labeled as `AI_CACHED`).
 - **Verification:** Run `uv run enrich_transactions.py` to see the updated categorization summary.
 
-### 5. Audit & Pipeline Management (Coming Soon)
-Future tasks will include auditing LLM categorizations against regex patterns and promoting successful AI results to permanent rules.
+### 6. Test Regex Pattern
+Dry-run a regex pattern against the transaction history to see what it would match before saving it to `patterns.json`.
+
+**Workflow:**
+- **Basic Test:** `uv run test_pattern.py "my regex"` (searches `counterparty` field).
+- **Specific Field:** `uv run test_pattern.py "my regex" --field remittance`
+- **Any Field:** `uv run test_pattern.py "my regex" --field any`
+- **Verification:** Review the printed list of matches to ensure no false positives.
+
+### 7. Identify Pattern Candidates
+Analyzes AI-categorized transactions to find high-frequency merchants. This helps you decide which regex patterns are most worth creating to automate future categorization.
+
+**Workflow:**
+- **Standard Run:** `uv run identify_candidates.py`
+- **Filter by Category:** `uv run identify_candidates.py --category "Food & Drink"` (matches any category starting with the string).
+- **Output:** A table of "Clean Names" with high hit counts and raw text samples.
+- **Next Steps:** Use the samples to draft a regex, test it with Task 6, add it to `patterns.json`, and run Task 4 to cleanup the cache.

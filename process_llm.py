@@ -10,7 +10,9 @@ from transaction_manager import TransactionManager
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Process transactions with Gemini LLM.")
+    parser = argparse.ArgumentParser(
+        description="Process transactions with Gemini LLM."
+    )
     parser.add_argument(
         "--force",
         action="store_true",
