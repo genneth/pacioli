@@ -72,6 +72,16 @@ Dry-run a regex pattern against the transaction history to see what it would mat
 - **Timing Filter:** `uv run test_pattern.py "regex" --min-day 25` (checks day of month)
 - **Verification:** Review the printed list of matches to ensure no false positives.
 
+### 7. Identify Pattern Candidates
+Analyzes AI-categorized transactions to find high-frequency merchants. This helps you decide which regex patterns are most worth creating to automate future categorization.
+
+**Workflow:**
+- **Standard Run:** `uv run identify_candidates.py` (groups by AI-generated "Clean Name").
+- **Deep Scan (Raw Mode):** `uv run identify_candidates.py --mode raw` (groups by raw bank strings). This is highly effective at finding repeats that the AI labelled inconsistently.
+- **Filter by Category:** `uv run identify_candidates.py --category "Food & Drink"` (matches any category starting with the string).
+- **Output:** A table of candidates with hit counts and raw text samples.
+- **Next Steps:** Use the samples to draft a regex, test it with Task 6, add it to `data/patterns.json`, and run Task 4 to cleanup the cache.
+
 ### 8. List Categories
 Displays the current master list of categories defined in the system. Since categories are now managed as keys in the patterns configuration, this is the definitive list used by the LLM and validation logic.
 
@@ -79,12 +89,3 @@ Displays the current master list of categories defined in the system. Since cate
 - Command: `uv run list_categories.py`
 - **Output:** A sorted list of all valid categories.
 - **Next Steps:** If a category is missing, add it as a new key in `data/patterns.json` with an empty list `[]`.
-
-### 7. Identify Pattern Candidates
-Analyzes AI-categorized transactions to find high-frequency merchants. This helps you decide which regex patterns are most worth creating to automate future categorization.
-
-**Workflow:**
-- **Standard Run:** `uv run identify_candidates.py`
-- **Filter by Category:** `uv run identify_candidates.py --category "Food & Drink"` (matches any category starting with the string).
-- **Output:** A table of "Clean Names" with high hit counts and raw text samples.
-- **Next Steps:** Use the samples to draft a regex, test it with Task 6, add it to `patterns.json`, and run Task 4 to cleanup the cache.

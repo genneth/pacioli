@@ -16,6 +16,12 @@ def main():
     parser.add_argument(
         "--category", help="Filter by category prefix (e.g. 'Food & Drink')"
     )
+    parser.add_argument(
+        "--mode",
+        choices=["clean", "raw"],
+        default="clean",
+        help="Grouping mode: 'clean' (by AI name) or 'raw' (by bank counterparty string)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING)
@@ -39,18 +45,28 @@ def main():
         return
 
     # 3. Group and aggregate
-    # We group by clean_name and category to find consistent AI behavior.
-    # We collect unique counterparty strings to help the user draft a regex.
-    summary = (
-        df_ai.group_by(["clean_name", "category"])
-        .agg(
-            hits=pl.len(),
-            raw_samples=C.counterparty.unique().head(3)
+    if args.mode == "clean":
+        summary = (
+            df_ai.group_by(["clean_name", "category"])
+            .agg(
+                hits=pl.len(),
+                raw_samples=C.counterparty.unique().head(3)
+            )
+            .sort("hits", descending=True)
         )
-        .sort("hits", descending=True)
-    )
+    else:
+        # Raw mode helps find inconsistent AI labelling
+        summary = (
+            df_ai.group_by(["counterparty"])
+            .agg(
+                hits=pl.len(),
+                categories=C.category.unique(),
+                ai_names=C.clean_name.unique()
+            )
+            .sort("hits", descending=True)
+        )
 
-    print("\nTop AI-Categorized Merchants (Candidates for Regex Patterns):")
+    print(f"\nTop AI-Categorized Merchants (Mode: {args.mode}):")
     with pl.Config(fmt_str_lengths=100, tbl_rows=20):
         print(summary.head(20))
     

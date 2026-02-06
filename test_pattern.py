@@ -26,6 +26,9 @@ def main():
     rows = load_transactions()
     tm = TransactionManager()
     
+    # Ensure transfers are detected for correct source attribution
+    tm.detect_transfers(rows)
+    
     matches = tm.test_pattern(
         rows,
         args.pattern,
@@ -43,10 +46,25 @@ def main():
         # Sort by date for better readability
         sorted_matches = sorted(matches, key=lambda x: x.booking_date, reverse=True)
         for m in sorted_matches:
-            print(
-                f" - {m.booking_date}: {m.amount:>10.2f} {m.currency} | "
-                f"{m.counterparty}"
+            res = tm.resolve_transaction(m)
+            category = res.get("category") or "Uncategorized"
+            source = res.get("source") or "NONE"
+            reason = res.get("category_reason") or ""
+            suggested = res.get("suggested_category")
+            suggested_reason = res.get("suggestion_reason") or ""
+
+            # Use a wide horizontal format
+            line = (
+                f"{m.booking_date} | {m.amount:>9.2f} {m.currency} | "
+                f"{m.counterparty[:40]:<40} | "
+                f"{category[:30]:<30} ({source:<9})"
             )
+            if reason:
+                line += f" | {reason}"
+            
+            print(line)
+            if suggested:
+                print(f"      └─ SUGGESTION: {suggested} | WHY: {suggested_reason}")
 
 if __name__ == "__main__":
     main()
