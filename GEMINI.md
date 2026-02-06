@@ -42,8 +42,18 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
     - `max_day`: (Optional) Maximum day of month (1-31) to match.
 
 ### `data/manual_assignments.json`
-- **Format**: A dictionary mapping `internalTransactionId` to overrides.
-- **Fields**: `clean_name`, `category`.
+- **Format**: A dictionary mapping `internalTransactionId` to an object with `clean_name` and `category`.
+- **Purpose**: Use for "one-off" transactions or outliers that don't warrant a recurring regex pattern.
+- **Priority**: This is the **highest priority** source. It overrides Patterns, Transfers, and AI Cache.
+- **Schema**:
+    ```json
+    {
+      "tx_id": {
+        "clean_name": "Merchant Name",
+        "category": "Category > Subcategory"
+      }
+    }
+    ```
 
 ### `data/llm_cache.json`
 - **Format**: A dictionary caching Gemini's responses to avoid redundant API calls.

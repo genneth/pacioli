@@ -89,3 +89,55 @@ Displays the current master list of categories defined in the system. Since cate
 - Command: `uv run list_categories.py`
 - **Output:** A sorted list of all valid categories.
 - **Next Steps:** If a category is missing, add it as a new key in `data/patterns.json` with an empty list `[]`.
+
+### 9. Manually Assign Transaction
+
+Manually overrides the categorization for a specific transaction ID. Use this for "one-off" outliers that don't warrant a recurring regex pattern.
+
+
+
+**Workflow:**
+
+1. Identify the transaction ID (e.g. from `enriched_transactions.csv` or `test_pattern.py`).
+
+2. Add an entry to `data/manual_assignments.json`:
+
+   ```json
+
+   {
+
+     "tx_id": {
+
+       "clean_name": "Merchant Name",
+
+       "category": "Category > Subcategory"
+
+     }
+
+   }
+
+   ```
+
+3. **Verification:** Run `uv run enrich_transactions.py` and look for the `MANUAL` source in the summary.
+
+
+
+### 10. Lint Regex Patterns
+
+Analyzes all patterns in `data/patterns.json` to identify dead, inefficient, or overlapping rules. This helps maintain a lean and deterministic categorization engine.
+
+
+
+**Workflow:**
+
+- Command: `uv run lint_patterns.py`
+
+- **Output Types:**
+
+    - `[FAIL]`: Dead patterns that match ZERO transactions.
+
+    - `[HINT]`: Inefficient patterns that match only ONE transaction (consider moving to Manual Assignments).
+
+    - `[WARN]`: Transactions matching multiple patterns (ambiguous rules).
+
+- **Next Steps:** Refine the regex in `data/patterns.json` or move specific outliers to manual assignments.
