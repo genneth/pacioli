@@ -25,3 +25,21 @@ GOCARDLESS_SECRET_ID = "..."
 GOCARDLESS_SECRET_KEY = "..."
 GOOGLE_API_KEY = "..."
 ```
+
+## Operational Workflows (Gemini CLI)
+
+The project is designed to be managed via the **Gemini CLI** using the `ops` skill. This provides a streamlined interface for the data pipeline and categorization maintenance.
+
+### Key Workflows
+- **Sync & Categorize**: `update transactions` -> Fetches new data and runs enrichment.
+- **Pattern Maintenance**:
+    - `uv run lint_patterns.py`: Find dead or overlapping rules.
+    - `uv run cleanup_cache.py`: Remove AI cache entries covered by new patterns.
+    - `uv run enrich_transactions.py`: Re-run the categorization pipeline.
+- **AI Labeling**: `uv run process_llm.py` -> Uses Gemini to label uncategorized transactions.
+
+### Categorization Hierarchy
+1. **Manual Overrides** (`data/manual_assignments.json`)
+2. **Internal Transfers** (Auto-detected)
+3. **Regex Patterns** (`data/patterns.json`)
+4. **AI Cache** (`data/llm_cache.json`)
