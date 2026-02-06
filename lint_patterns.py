@@ -14,9 +14,23 @@ def main():
     
     print("\n--- Pattern Linting Report ---\n")
     
-    # 1. Check for unused patterns or patterns with very few matches
-    # We iterate through all patterns and count matches manually to be precise
+    # 1. Calculate effective hits for each pattern
+    # A hit only counts if the transaction isn't already handled by a higher priority source
+    tm.detect_transfers(rows)
     
+    # Pre-calculate priority status for all transactions
+    tx_status = {}
+    for tx in rows:
+        matches = tm._find_matches(tx)
+        priority_source = None
+        if "MANUAL" in matches:
+            priority_source = "MANUAL"
+        elif "TRANSFER" in matches:
+            priority_source = "TRANSFER"
+        elif "ZERO_AMOUNT" in matches:
+            priority_source = "ZERO_AMOUNT"
+        tx_status[tx.id] = priority_source
+
     results = []
     for p in tm.patterns:
         pattern_str = p.get("pattern", "")
@@ -24,7 +38,7 @@ def main():
         clean_name = p.get("clean_name", "Unknown")
         category = p.get("category", "Uncategorized")
         
-        matches = tm.test_pattern(
+        all_matches = tm.test_pattern(
             rows, 
             pattern_str, 
             field=p_field,
@@ -33,12 +47,15 @@ def main():
             min_day=p.get("min_day")
         )
         
+        # Only count hits that aren't overridden by higher priority sources
+        effective_matches = [m for m in all_matches if tx_status[m.id] is None]
+        
         results.append({
             "pattern": pattern_str,
             "clean_name": clean_name,
             "category": category,
-            "hits": len(matches),
-            "sample_id": matches[0].id if matches else None
+            "hits": len(effective_matches),
+            "sample_id": effective_matches[0].id if effective_matches else (all_matches[0].id if all_matches else None)
         })
     
     df = pl.DataFrame(results)
@@ -46,20 +63,20 @@ def main():
     # Check for dead patterns
     dead = df.filter(C.hits == 0)
     if not dead.is_empty():
-        print(f"[FAIL] Found {len(dead)} patterns that match ZERO transactions:")
-        for row in dead.to_dicts():
-            print(f"  - {row['category']} | {row['pattern']} ({row['clean_name']})")
+        print(f"[FAIL] Found {len(dead)} patterns that match ZERO available transactions:")
+        for row in dead.sort("category").to_dicts():
+            print(f"  - {row['category']:<30} | {row['pattern']} ({row['clean_name']})")
         print()
     else:
         print("[PASS] No dead patterns found.")
 
-    # Check for inefficient patterns (1 match)
-    lonely = df.filter(C.hits == 1)
-    if not lonely.is_empty():
-        print(f"[HINT] Found {len(lonely)} patterns matching only ONE transaction.")
-        print("Consider moving these to 'data/manual_assignments.json' for better performance:")
-        for row in lonely.to_dicts():
-            print(f"  - {row['category']} | {row['pattern']} (ID: {row['sample_id']})")
+    # Check for low-utility patterns (1-3 matches)
+    low_utility = df.filter((C.hits > 0) & (C.hits <= 3))
+    if not low_utility.is_empty():
+        print(f"[HINT] Found {len(low_utility)} patterns matching 3 or fewer transactions.")
+        print("Consider moving these to 'data/manual_assignments.json' if they are unlikely to recur:")
+        for row in low_utility.sort("hits", "category").to_dicts():
+            print(f"  - ({row['hits']} hits) {row['category']:<25} | {row['pattern']} (ID: {row['sample_id']})")
         print()
     
     # 2. Check for Overlaps (Transactions matching multiple patterns)
