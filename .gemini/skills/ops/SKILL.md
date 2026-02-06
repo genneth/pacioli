@@ -72,6 +72,14 @@ Dry-run a regex pattern against the transaction history to see what it would mat
 - **Timing Filter:** `uv run test_pattern.py "regex" --min-day 25` (checks day of month)
 - **Verification:** Review the printed list of matches to ensure no false positives.
 
+### 8. List Categories
+Displays the current master list of categories defined in the system. Since categories are now managed as keys in the patterns configuration, this is the definitive list used by the LLM and validation logic.
+
+**Workflow:**
+- Command: `uv run list_categories.py`
+- **Output:** A sorted list of all valid categories.
+- **Next Steps:** If a category is missing, add it as a new key in `data/patterns.json` with an empty list `[]`.
+
 ### 7. Identify Pattern Candidates
 Analyzes AI-categorized transactions to find high-frequency merchants. This helps you decide which regex patterns are most worth creating to automate future categorization.
 

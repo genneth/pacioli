@@ -15,7 +15,6 @@ from transaction_loader import Transaction
 DATA_DIR = "data"
 MANUAL_ASSIGNMENTS_FILE = os.path.join(DATA_DIR, "manual_assignments.json")
 PATTERNS_FILE = os.path.join(DATA_DIR, "patterns.json")
-CATEGORIES_FILE = os.path.join(DATA_DIR, "categories.json")
 CACHE_FILE = os.path.join(DATA_DIR, "llm_cache.json")
 
 
@@ -42,7 +41,6 @@ class TransactionManager:
             self.data_dir, "manual_assignments.json"
         )
         self.patterns_file = os.path.join(self.data_dir, "patterns.json")
-        self.categories_file = os.path.join(self.data_dir, "categories.json")
         self.cache_file = os.path.join(self.data_dir, "llm_cache.json")
 
         self.manual_assignments: dict[str, dict[str, str]] = {}
@@ -61,11 +59,22 @@ class TransactionManager:
 
         if os.path.exists(self.patterns_file):
             with open(self.patterns_file) as f:
-                self.patterns = json.load(f)
-
-        if os.path.exists(self.categories_file):
-            with open(self.categories_file) as f:
-                self.categories = json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    # Master format: {"Category": [ {pattern...}, ... ]}
+                    self.categories = sorted(list(data.keys()))
+                    self.patterns = []
+                    for category, patterns in data.items():
+                        for p in patterns:
+                            p_copy = p.copy()
+                            p_copy["category"] = category
+                            self.patterns.append(p_copy)
+                else:
+                    # Legacy flat list format (will be migrated on next save)
+                    self.patterns = data
+                    self.categories = sorted(
+                        list(set(p.get("category", "Uncategorized") for p in data))
+                    )
 
         if os.path.exists(self.cache_file):
             with open(self.cache_file) as f:
@@ -78,13 +87,24 @@ class TransactionManager:
             json.dump(self.manual_assignments, f, indent=2)
 
         with open(self.patterns_file, "w") as f:
-            json.dump(self.patterns, f, indent=2)
-
-        with open(self.categories_file, "w") as f:
-            json.dump(self.categories, f, indent=2)
+            json.dump(self._regroup_patterns(), f, indent=2)
 
         with open(self.cache_file, "w") as f:
             json.dump(self.llm_cache, f, indent=2)
+
+    def _regroup_patterns(self) -> dict[str, list[dict[str, Any]]]:
+        """Regroups internal flat pattern list into {category: [patterns]} for storage."""
+        # Start with all known categories to preserve empty ones
+        grouped: dict[str, list[dict[str, Any]]] = {cat: [] for cat in self.categories}
+
+        for p in self.patterns:
+            p_copy = p.copy()
+            cat = p_copy.pop("category", "Uncategorized")
+            if cat not in grouped:
+                grouped[cat] = []
+            grouped[cat].append(p_copy)
+
+        return dict(sorted(grouped.items()))
 
     def detect_transfers(self, transactions: list[Transaction]) -> None:
         """
@@ -206,7 +226,7 @@ class TransactionManager:
             min_amt = pattern.get("min_amount")
             if min_amt is not None and amt < float(min_amt):
                 continue
-            
+
             max_amt = pattern.get("max_amount")
             if max_amt is not None and amt > float(max_amt):
                 continue
@@ -215,7 +235,7 @@ class TransactionManager:
             min_day = pattern.get("min_day")
             if min_day is not None and tx.booking_date.day < int(min_day):
                 continue
-            
+
             max_day = pattern.get("max_day")
             if max_day is not None and tx.booking_date.day > int(max_day):
                 continue

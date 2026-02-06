@@ -29,18 +29,13 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 
 ## Data Schema & Constraints
 
-### `data/categories.json`
-- **Format**: A flat list of strings.
-- **Hierarchy**: Use the `Parent > Child` convention (e.g., `Bills > Utilities`).
-- **Integrity**: This is the master reference. Every category assigned in other files **must** exist here.
-
 ### `data/patterns.json`
-- **Format**: A list of objects used for regex-based categorization.
-- **Fields**:
+- **Format**: A dictionary where keys are the **Master Category List** and values are lists of pattern objects. 
+- **Integrity**: This is the single source of truth for categorization. Every category used in the system **must** exist as a key here.
+- **Fields (per object)**:
     - `pattern`: A regex string (applied case-insensitively).
-    - `field`: The transaction field to search. Valid values: `counterparty`, `remittance`, or `any` (both).
+    - `field`: (Optional) The transaction field to search. Defaults to `counterparty`. Valid values: `counterparty`, `remittance`, or `any` (both).
     - `clean_name`: The "human-friendly" merchant or entity name.
-    - `category`: The category string (must exist in `categories.json`).
     - `min_amount`: (Optional) Minimum absolute amount to match.
     - `max_amount`: (Optional) Maximum absolute amount to match.
     - `min_day`: (Optional) Minimum day of month (1-31) to match.

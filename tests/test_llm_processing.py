@@ -30,13 +30,6 @@ def mock_genai():
     return mock
 
 
-@pytest.fixture
-def temp_data_dir(tmp_path):
-    d = tmp_path / "data"
-    d.mkdir()
-    return str(d)
-
-
 def test_batch_process_llm_flow(temp_data_dir, mock_genai):
     tm = TransactionManager(genai_client=mock_genai, data_dir=temp_data_dir)
     tm.categories = ["Groceries", "Rent"]
