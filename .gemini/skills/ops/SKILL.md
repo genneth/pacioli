@@ -81,6 +81,7 @@ Analyzes AI-categorized transactions to find high-frequency merchants. This help
 - **Filter by Category:** `uv run identify_candidates.py --category "Food & Drink"` (matches any category starting with the string).
 - **Output:** A table of candidates with hit counts and raw text samples.
 - **Next Steps:** Use the samples to draft a regex, test it with Task 6, add it to `data/patterns.json`, and run Task 4 to cleanup the cache.
+    - **Rule:** Always follow the **Entity-First Philosophy** for `clean_name`. Use the specific merchant name (e.g. "Waitrose") rather than a category name (e.g. "Groceries").
 
 ### 8. List Categories
 Displays the current master list of categories defined in the system. Since categories are now managed as keys in the patterns configuration, this is the definitive list used by the LLM and validation logic.

@@ -36,6 +36,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
     - `pattern`: A regex string (applied case-insensitively).
     - `field`: (Optional) The transaction field to search. Defaults to `counterparty`. Valid values: `counterparty`, `remittance`, or `any` (both).
     - `clean_name`: The "human-friendly" merchant or entity name.
+        - **Entity-First Philosophy**: This field MUST represent a specific entity (e.g., "Waitrose", "Uber", "British Gas"). Do NOT use groupings or categories (e.g., "Groceries", "Taxis", "Utility") as the name.
     - `min_amount`: (Optional) Minimum absolute amount to match.
     - `max_amount`: (Optional) Maximum absolute amount to match.
     - `min_day`: (Optional) Minimum day of month (1-31) to match.

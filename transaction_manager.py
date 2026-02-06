@@ -563,10 +563,11 @@ Your task is to categorize the following transactions and identify a "Clean Name
 (merchant or entity name).
 
 Guidelines:
-1. **Clean Name**: Extract the real merchant name (e.g., "Uber" from "Uber *Trip ..."). 
+1. **Clean Name**: Extract the specific entity or merchant name (e.g., "Uber" from "Uber *Trip ..."). 
+   - **Entity-First**: Always prefer the specific brand or company name. Do NOT use groupings or categories (e.g., use "British Gas" instead of "Utility", "Waitrose" instead of "Groceries").
    - Remove location codes, dates, and random identifiers.
    - For individuals, use "First Last".
-   - For transfers, use "Transfer to/from X".
+   - For transfers, use "Transfer to/from [Entity Name]".
 2. **Category**: Choose the BEST fit from the provided list.
    - Use "Time" to distinguish meals (Breakfast vs Lunch vs Dinner vs Nightlife).
    - Use "Amt" to distinguish subscriptions (fixed/round #s) vs regular spending.
