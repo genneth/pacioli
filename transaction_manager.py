@@ -161,14 +161,14 @@ class TransactionManager:
                     self.transfer_map[tx.id] = {
                         "clean_name": "Internal Transfer",
                         "category": "Transfers > Matched",
-                        "source": "TRANSFER_MATCH",
+                        "source": "TRANSFER",
                         "confidence": 1.0,
                         "linked_tx": cand.id,
                     }
                     self.transfer_map[cand.id] = {
                         "clean_name": "Internal Transfer",
                         "category": "Transfers > Matched",
-                        "source": "TRANSFER_MATCH",
+                        "source": "TRANSFER",
                         "confidence": 1.0,
                         "linked_tx": tx.id,
                     }
@@ -422,7 +422,7 @@ class TransactionManager:
                 source = resolution.get("source")
 
                 # If it resolves to something definitive that overrides cache
-                if source in ["MANUAL", "PATTERN", "TRANSFER_MATCH", "ZERO_AMOUNT"]:
+                if source in ["MANUAL", "PATTERN", "TRANSFER", "ZERO_AMOUNT"]:
                     del self.llm_cache[tx.id]
                     count += 1
 

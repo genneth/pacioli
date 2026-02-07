@@ -335,20 +335,20 @@ def test_transfer_detection(temp_data_dir, monkeypatch):
     res4 = df.filter(C.id == "tx4").select("source").to_dicts()[0]
     res5 = df.filter(C.id == "tx5").select("source").to_dicts()[0]
 
-    assert res1["source"] == "TRANSFER_MATCH"
+    assert res1["source"] == "TRANSFER"
     assert res1["category"] == "Transfers > Matched"
     assert res1["clean_name"] == "Internal Transfer"
 
-    assert res2["source"] == "TRANSFER_MATCH"
+    assert res2["source"] == "TRANSFER"
     assert res2["category"] == "Transfers > Matched"
     assert res2["clean_name"] == "Internal Transfer"
 
     # Should not be transfer
-    assert res3["source"] is None or res3["source"] != "TRANSFER_MATCH"
-    assert res4["source"] is None or res4["source"] != "TRANSFER_MATCH"
+    assert res3["source"] is None or res3["source"] != "TRANSFER"
+    assert res4["source"] is None or res4["source"] != "TRANSFER"
 
     # Same account should not match
-    assert res5["source"] is None or res5["source"] != "TRANSFER_MATCH"
+    assert res5["source"] is None or res5["source"] != "TRANSFER"
 
 
 def test_pattern_matching_with_filters(temp_data_dir):

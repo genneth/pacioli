@@ -176,7 +176,7 @@ The project includes a specialized `ops` skill for managing the transaction pipe
 1.  **Sync Transactions:** `uv run update_transactions.py` - Fetches new data from GoCardless.
 2.  **Enrich Transactions:** `uv run enrich_transactions.py` - Loads, deduplicates, and categorizes transactions.
     - Uses `tqdm` for progress monitoring.
-    - Outputs a summary of categorization sources (`PATTERN`, `AI_CACHED`, `TRANSFER_MATCH`, etc.).
+    - Outputs a summary of categorization sources (`PATTERN`, `AI_CACHED`, `TRANSFER`, etc.).
     - Highlights uncategorized transactions for review.
 3.  **Prune LLM Cache:** `uv run prune_cache.py <tx_id> ...` - Removes specific transactions from `llm_cache.json` to force re-evaluation.
 

@@ -15,7 +15,7 @@ def main():
     
     # 2. Purge overridden cache entries
     # This removes entries from llm_cache.json if they are now handled by 
-    # MANUAL, PATTERN, TRANSFER_MATCH, or ZERO_AMOUNT rules.
+    # MANUAL, PATTERN, TRANSFER, or ZERO_AMOUNT rules.
     purged_count = tm.purge_override_cache(rows)
     
     if purged_count > 0:
