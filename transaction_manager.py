@@ -18,9 +18,6 @@ load_dotenv()
 
 # Paths
 DATA_DIR = "data"
-MANUAL_ASSIGNMENTS_FILE = os.path.join(DATA_DIR, "manual_assignments.json")
-PATTERNS_FILE = os.path.join(DATA_DIR, "patterns.json")
-CACHE_FILE = os.path.join(DATA_DIR, "llm_cache.json")
 
 
 class TransactionResult(BaseModel):
@@ -600,7 +597,7 @@ class TransactionManager:
 
         # Load Custom User Instructions
         custom_instructions = ""
-        instr_path = os.path.join(DATA_DIR, "ai_instructions.md")
+        instr_path = os.path.join(self.data_dir, "ai_instructions.md")
         if os.path.exists(instr_path):
             with open(instr_path) as f:
                 custom_instructions = f"\nUSER-SPECIFIC HEURISTICS:\n{f.read()}\n"
