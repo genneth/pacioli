@@ -598,26 +598,22 @@ class TransactionManager:
 
         categories_str = "\n".join(self.categories)
 
+        # Load Custom User Instructions
+        custom_instructions = ""
+        instr_path = os.path.join(DATA_DIR, "ai_instructions.md")
+        if os.path.exists(instr_path):
+            with open(instr_path) as f:
+                custom_instructions = f"\nUSER-SPECIFIC HEURISTICS:\n{f.read()}\n"
+
         prompt = f"""
 You are an expert financial data analyst.
 Your task is to categorize the following transactions and identify a "Clean Name"
 (merchant or entity name).
 
-Guidelines:
+UNIVERSAL GUIDELINES:
 1. **Clean Name**: Extract the specific entity or merchant name (e.g., "Uber" from "Uber *Trip ..."). 
-   - **Entity-First**: Always prefer the specific brand or company name. Do NOT use groupings or categories (e.g., use "British Gas" instead of "Utility", "Waitrose" instead of "Groceries").
    - Remove location codes, dates, and random identifiers.
-   - For individuals, use "First Last".
-   - For transfers, use "Transfer to/from [Entity Name]".
 2. **Category**: Choose the BEST fit from the provided list.
-   - **Meal Timing**: Use "Time" to distinguish:
-     - **Breakfast**: 05:00 - 10:30
-     - **Lunch / Takeaway Lunch**: 10:30 - 16:00
-     - **Dinner / Takeaway Dinner**: 16:00 - 22:00
-     - **Nightlife**: 22:00 - 05:00
-   - **Amount Heuristics**:
-     - If Category is "Coffee & Snacks" but "Amt" > £30, it is likely a "Restaurant" or "Takeaway" order (e.g., buying for a group or a large cake).
-     - If Category is "Restaurants" but "Amt" < £10, it is likely "Coffee & Snacks" (e.g., just a drink).
    - Use "Amt" to distinguish subscriptions (fixed/round #s) vs regular spending.
    - Use "Extra" JSON data if standard fields are ambiguous.
    - If no category fits well, use "Uncategorized".
@@ -627,11 +623,12 @@ Guidelines:
    - Explain WHY in the 'suggestion_reason' field.
    - Still pick the best existing match (or "Uncategorized") for the 'category' field.
 
+{custom_instructions}
 
-Categories:
+CATEGORIES TO CHOOSE FROM:
 {categories_str}
 
-Transactions:
+TRANSACTIONS TO PROCESS:
 {tx_list_str}
 """
 
