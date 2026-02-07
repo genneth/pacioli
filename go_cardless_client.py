@@ -33,7 +33,7 @@ class Client:
             or (self.try_get_new_token() and self.try_fetch_institutions())
         ):
             raise Exception("Failed to fetch institutions after refreshing token")
-        logging.getLogger().info("Successfully authenticated and fetched institutions")
+        logging.info("Successfully authenticated and fetched institutions")
 
     def try_load_token(self):
         try:
@@ -41,7 +41,7 @@ class Client:
                 self.token = json.load(f)
             return True
         except Exception as ex:
-            logging.getLogger().info(f"Tried to load {self._token_file}. Failed: {ex}")
+            logging.info(f"Tried to load {self._token_file}. Failed: {ex}")
             return False
 
     def save_token(self):
@@ -65,7 +65,7 @@ class Client:
             self.save_token()
             return True
         else:
-            logging.getLogger().info(
+            logging.info(
                 f"Failed to get new token: {response.status_code} {response.json()}"
             )
             return False
@@ -76,7 +76,7 @@ class Client:
         params: dict[str, str] | None = None,
     ):
         if not self.token:
-            logging.getLogger().info("No token")
+            logging.info("No token")
             return None
         response = requests.get(
             self._base_url + endpoint,
@@ -89,14 +89,14 @@ class Client:
         if response.status_code == 200:
             return response.json()
         else:
-            logging.getLogger().info(
+            logging.info(
                 f"GET {endpoint} failed: {response.status_code} {response.json()}"
             )
             return None
 
     def post(self, endpoint: str, data):
         if not self.token:
-            logging.getLogger().info("No token")
+            logging.info("No token")
             return None
         response = requests.post(
             self._base_url + endpoint,
@@ -110,14 +110,14 @@ class Client:
         if response.status_code == 200 or response.status_code == 201:
             return response.json()
         else:
-            logging.getLogger().info(
+            logging.info(
                 f"POST {endpoint} failed: {response.status_code} {response.json()}"
             )
             return None
 
     def delete(self, endpoint: str):
         if not self.token:
-            logging.getLogger().info("No token")
+            logging.info("No token")
             return None
         response = requests.delete(
             self._base_url + endpoint,
@@ -129,7 +129,7 @@ class Client:
         if response.status_code == 200:
             return response.json()
         else:
-            logging.getLogger().info(
+            logging.info(
                 f"DELETE {endpoint} failed: {response.status_code} {response.json()}"
             )
             return None
