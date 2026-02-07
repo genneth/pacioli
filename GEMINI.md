@@ -70,6 +70,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 *   **Configuration (Level 3)**: Regex patterns, category lists, logic. These are safe to share/commit *if* they don't contain hardcoded Level 2 data.
 
 ### 2. Standing Orders for AI Agents
+*   **Custom Heuristics**: Always consult `data/ai_instructions.md` for project-specific naming philosophies, meal timing, and personal schedule context before performing enrichment or labeling.
 *   **Grep, Don't Read**: When inspecting large files in Level 2 directories, always use `search_file_content` with specific patterns rather than `read_file` to minimize exposure of irrelevant PII.
 *   **Scrub Before Commit**: If you are asked to create a new test or documentation example, **generate fake data**. Never copy-paste a real transaction ID or counterparty string into a tracked file.
 *   **Anonymization**: If you see a real name (e.g., "SMITH") or an account number in a string you are processing, replace it with a placeholder like `[USER]` or `[ACCOUNT_ID]` if that string is intended for a non-ignored file.
