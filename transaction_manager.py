@@ -13,10 +13,8 @@ from pydantic import BaseModel
 
 from transaction_loader import Transaction
 
-# Load environment variables (.env)
 load_dotenv()
 
-# Paths
 DATA_DIR = "data"
 
 
@@ -54,7 +52,6 @@ class TransactionManager:
         self.load_data()
 
     def load_data(self):
-        """Loads all configuration and data files."""
         if os.path.exists(self.manual_assignments_file):
             with open(self.manual_assignments_file) as f:
                 self.manual_assignments = json.load(f)
@@ -83,7 +80,6 @@ class TransactionManager:
                 self.llm_cache = json.load(f)
 
     def save_data(self):
-        """Saves all configuration and data files."""
         os.makedirs(self.data_dir, exist_ok=True)
         with open(self.manual_assignments_file, "w") as f:
             json.dump(self.manual_assignments, f, indent=2)
@@ -95,8 +91,11 @@ class TransactionManager:
             json.dump(self.llm_cache, f, indent=2)
 
     def _regroup_patterns(self) -> dict[str, list[dict[str, Any]]]:
-        """Regroups internal flat pattern list into {category: [patterns]} for storage."""
-        # Start with all known categories to preserve empty ones
+        """Convert flat internal pattern list back to grouped-by-category format for JSON.
+
+        Seed with all known categories so that empty categories survive the round-trip
+        (they define the master category list even if no patterns exist yet).
+        """
         grouped: dict[str, list[dict[str, Any]]] = {cat: [] for cat in self.categories}
 
         for p in self.patterns:
@@ -109,13 +108,15 @@ class TransactionManager:
         return dict(sorted(grouped.items()))
 
     def detect_transfers(self, transactions: list[Transaction]) -> None:
-        """
-        Identifies transfers between accounts.
-        Populates self.transfer_map with transaction IDs identified as transfers.
-        """
-        self.transfer_map = {}  # Reset
+        """Pair up inter-account transfers so they don't pollute spending totals.
 
-        # Group by amount for O(N) lookup
+        Heuristic: two transactions are a transfer if they have opposite amounts,
+        are on different accounts, settle within 3 days, and both mention the
+        user's name (TRANSFER_NAME env var) in the description.
+        """
+        self.transfer_map = {}
+
+        # Index by amount so we can find opposite-amount candidates in O(1)
         amount_map: dict[float, list[Transaction]] = {}
         for tx in transactions:
             amt = round(tx.amount, 2)
@@ -176,15 +177,11 @@ class TransactionManager:
                     break
 
     def _find_matches(self, tx: Transaction) -> dict[str, Any]:
-        """
-        Internal method to find all possible matches for a transaction.
-        """
         if not tx.id:
             return {}
 
-        matches: dict[str, Any] = {}  # source -> result
+        matches: dict[str, Any] = {}
 
-        # 1. Manual Assignments: User overrides always take precedence
         if tx.id in self.manual_assignments:
             assign = self.manual_assignments[tx.id]
             matches["MANUAL"] = {
@@ -194,11 +191,9 @@ class TransactionManager:
                 "confidence": 1.0,
             }
 
-        # 2. Transfers: Detected internal movements
         if tx.id in self.transfer_map:
             matches["TRANSFER"] = self.transfer_map[tx.id]
 
-        # 3. Zero Amount: Accounting artifacts or failed txs usually irrelevant
         if tx.amount == 0:
             matches["ZERO_AMOUNT"] = {
                 "clean_name": "Zero Amount",
@@ -207,7 +202,6 @@ class TransactionManager:
                 "confidence": 1.0,
             }
 
-        # 3. Patterns: Regex rules for recurring/known merchants
         pattern_matches = []
         for pattern in self.patterns:
             if not self._tx_matches_pattern(tx, pattern):
@@ -227,7 +221,6 @@ class TransactionManager:
             matches["PATTERN"] = pattern_matches[0]
             matches["_ALL_PATTERNS"] = pattern_matches
 
-        # 4. LLM Cache: Fallback to previously AI-categorized results
         if tx.id in self.llm_cache:
             cached = self.llm_cache[tx.id]
             matches["AI_CACHED"] = {
@@ -243,10 +236,12 @@ class TransactionManager:
         return matches
 
     def resolve_transaction(self, tx: Transaction) -> dict[str, Any]:
-        """
-        Resolves a single transaction against Manual, Patterns, and Cache.
-        Returns the enrichment data (clean_name, category, source, confidence).
-        Checks for overlaps and logs warnings.
+        """Pick the single best categorization from all match sources.
+
+        Enforces a strict priority (MANUAL > TRANSFER > ZERO > PATTERN > AI)
+        so that cheap deterministic rules always win over expensive probabilistic ones.
+        Logs when a higher-priority source shadows a lower one, to surface
+        redundant cache entries for cleanup.
         """
         if not tx.id:
             return {}
@@ -263,10 +258,6 @@ class TransactionManager:
                     "Using the first one."
                 )
 
-        # --- Hierarchy & Overlap Warnings ---
-        # We enforce a strict priority order to ensure deterministic and user-controlled
-        # categorization.
-
         final_result: dict[str, Any] = {
             "clean_name": None,
             "category": None,
@@ -274,7 +265,6 @@ class TransactionManager:
             "confidence": 0.0,
         }
 
-        # Priority 1: Manual - The user is always right.
         if "MANUAL" in matches:
             final_result = matches["MANUAL"]
             if "PATTERN" in matches:
@@ -287,33 +277,29 @@ class TransactionManager:
                     f"Transaction {tx.id}: Manual assignment overrides AI Cache"
                 )
 
-        # Priority 2: Transfers - Internal movements are distinct
         elif "TRANSFER" in matches:
             final_result = matches["TRANSFER"]
             if "AI_CACHED" in matches:
                 logging.info(f"Transaction {tx.id}: Transfer match overrides AI Cache")
 
-        # Priority 3: Zero Amount - Technical/failed txs are noise.
         elif "ZERO_AMOUNT" in matches:
             final_result = matches["ZERO_AMOUNT"]
             if "AI_CACHED" in matches:
                 logging.info(f"Transaction {tx.id}: Zero Amount overrides AI Cache")
 
-        # Priority 3: Pattern - Deterministic rules are cheaper and faster than AI.
         elif "PATTERN" in matches:
             final_result = matches["PATTERN"]
             if "AI_CACHED" in matches:
                 logging.info(f"Transaction {tx.id}: Pattern match overrides AI Cache")
 
-        # Priority 4: Cache - Expensive/probabilistic AI result.
         elif "AI_CACHED" in matches:
             final_result = matches["AI_CACHED"]
 
-        # Clean up temporary field
+        # pattern_matched is only used for overlap warnings, not returned to callers
         if "pattern_matched" in final_result:
             del final_result["pattern_matched"]
 
-        # Warning for unknown categories
+        # Catch typos or stale categories from LLM/manual assignments
         category = final_result.get("category")
         source = final_result.get("source")
         if category and category not in self.categories and category != "Uncategorized":
@@ -420,11 +406,12 @@ class TransactionManager:
         return [tx for tx in transactions if self._tx_matches_pattern(tx, p)]
 
     def purge_override_cache(self, transactions: list[Transaction]) -> int:
+        """Remove stale LLM cache entries that are now shadowed by higher-priority rules.
+
+        After adding new patterns or manual assignments, cached AI labels for those
+        transactions are dead weight. This keeps the cache lean and avoids confusion
+        when inspecting it.
         """
-        Removes entries from llm_cache if they are currently resolved via
-        MANUAL, PATTERN, TRANSFER_MATCH, or ZERO_AMOUNT.
-        """
-        # Ensure transfer map is up to date for this set of transactions
         self.detect_transfers(transactions)
 
         count = 0
@@ -487,17 +474,11 @@ class TransactionManager:
         if not transactions:
             return
 
-        # Use enrich_transactions to get current state
-        # This returns a Polars DataFrame
+        # Enrich first so we can filter out already-categorized transactions
         try:
             df = self.enrich_transactions(transactions)
         except ValueError:
-            # Handle case where enrich_transactions might fail on empty list
             return
-
-        # Filter for rows that need processing
-        # 1. source is null (Uncategorized/Unmatched)
-        # 2. force_update is True AND source is 'AI_CACHED'
 
         filter_expr = pl.col("source").is_null()
         if force_update:
@@ -523,16 +504,11 @@ class TransactionManager:
             self.save_data()  # Save incrementally
 
     def _query_llm_chunk(self, tx_chunk: list[dict]):
-        """
-        Helper to query Gemini for a chunk of transactions.
-        """
         if not self.client:
             return
 
-        # Prepare prompt
         tx_list_str = ""
         for tx in tx_chunk:
-            # tx is a dict from Polars
             tx_id = tx.get("id")
             booking_date = tx.get("booking_date")
             time_of_day = tx.get("time_of_day", "")
@@ -573,7 +549,6 @@ class TransactionManager:
 
         categories_str = "\n".join(self.categories)
 
-        # Load Custom User Instructions
         custom_instructions = ""
         instr_path = os.path.join(self.data_dir, "ai_instructions.md")
         if os.path.exists(instr_path):
@@ -617,7 +592,6 @@ TRANSACTIONS TO PROCESS:
                 },
             )
 
-            # Access the parsed result directly
             from typing import cast
 
             result = cast(CategorizationResponse | None, response.parsed)

@@ -53,13 +53,11 @@ def get_latest_booking_dates(data_dir: str = "raw") -> dict[str, date]:
 
 
 def _load_raw_json_files(data_dir: str) -> dict[str, list[dict]]:
-    """Loads all JSON files from account subdirectories in the data_dir."""
     raw_dumps: dict[str, list[dict]] = {}
 
     if not os.path.exists(data_dir):
         return raw_dumps
 
-    # Pre-collect all files to enable tqdm progress bar
     all_files = [
         (account, file_name)
         for account in os.listdir(data_dir)
@@ -96,10 +94,11 @@ def _load_raw_json_files(data_dir: str) -> dict[str, list[dict]]:
 def _deduplicate_and_validate(
     raw_dumps: dict[str, list[dict]],
 ) -> dict[str, list[dict]]:
-    """
-    Deduplicates raw transactions and validates essential fields (ID, Date).
-    Returns a dictionary mapping account IDs to lists of unique, valid transaction
-    dicts.
+    """Collapse overlapping fetch windows into a unique set of valid transactions.
+
+    Raw dumps overlap deliberately (to catch late settlements), so we deduplicate
+    by internalTransactionId and discard entries missing an ID or parseable date
+    since downstream code requires both.
     """
     validated_transactions = {}
 
@@ -107,7 +106,6 @@ def _deduplicate_and_validate(
         unique_txs = []
         seen_ids = set()
 
-        # Extract all booked transactions for this account
         raw_txs = []
         for dump in dumps:
             if not isinstance(dump, dict):
@@ -142,7 +140,6 @@ def _deduplicate_and_validate(
                 )
                 continue
 
-            # Deduplicate by ID
             if internal_id in seen_ids:
                 continue
 
@@ -155,7 +152,6 @@ def _deduplicate_and_validate(
 
 
 def _map_to_transactions(validated_data: dict[str, list[dict]]) -> list[Transaction]:
-    """Converts validated transaction dicts into Transaction objects."""
     return [
         transaction_obj
         for account_id, txs in validated_data.items()
@@ -165,7 +161,6 @@ def _map_to_transactions(validated_data: dict[str, list[dict]]) -> list[Transact
 
 
 def _extract_extra_fields(tx: dict[str, Any]) -> dict[str, Any]:
-    """Extracts additional high-value fields for categorization."""
     extras: dict[str, Any] = {
         "tx_type": None,
         "foreign_currency": None,
@@ -205,7 +200,6 @@ def _extract_extra_fields(tx: dict[str, Any]) -> dict[str, Any]:
 
 
 def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
-    """Maps a raw dictionary to a Transaction object."""
     # These are already checked in _deduplicate_and_validate
     internal_id = tx["internalTransactionId"]
     booking_date = date.fromisoformat(tx["bookingDate"])
@@ -271,28 +265,23 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
     for k in mapped_keys:
         unmapped.pop(k, None)
 
-    # Clean up additionalDataStructured if present
+    # Strip low-value noise from additionalDataStructured to keep unmapped lean
+    # (fields we already extracted or that add no categorization signal)
     if "additionalDataStructured" in unmapped:
         ads = unmapped["additionalDataStructured"]
         if isinstance(ads, dict):
-            # Remove chargeAmount
             ads.pop("chargeAmount", None)
 
-            # Clean up cardInstrument
             if "cardInstrument" in ads:
                 ci = ads["cardInstrument"]
                 if isinstance(ci, dict):
                     ci.pop("cardSchemeName", None)
                     ci.pop("name", None)
-                    # We extracted identification, so remove it too
                     ci.pop("identification", None)
 
-                    # If cardInstrument is now empty (only had dropped fields),
-                    # remove it
                     if not ci:
                         ads.pop("cardInstrument", None)
 
-            # If additionalDataStructured is now empty, remove it
             if not ads:
                 unmapped.pop("additionalDataStructured", None)
 
@@ -314,7 +303,6 @@ def _map_single_transaction(account_id: str, tx: dict[str, Any]) -> Transaction:
 
 
 def _get_counterparty(tx: dict[str, Any]) -> str | None:
-    """Merges creditor and debtor information."""
     creditor = tx.get("creditorName")
     debtor = tx.get("debtorName")
     if creditor and debtor:
@@ -323,7 +311,6 @@ def _get_counterparty(tx: dict[str, Any]) -> str | None:
 
 
 def _get_remittance(tx: dict[str, Any]) -> str | None:
-    """Extracts and normalizes remittance information."""
     unstructured = tx.get("remittanceInformationUnstructured")
     unstructured_array = tx.get("remittanceInformationUnstructuredArray")
 
@@ -344,12 +331,11 @@ def _get_remittance(tx: dict[str, Any]) -> str | None:
 def _elide_transaction_info(
     counterparty: str | None, remittance: str | None, internal_id: str
 ) -> tuple[str, str | None]:
-    """
-    Elides counterparty and remittance information to avoid duplication.
-    If one contains the other, keep the longer one in counterparty and clear remittance.
+    """Deduplicate counterparty vs remittance when one contains the other.
 
-    This reduces token usage when sending data to the LLM and reduces visual noise
-    for the user.
+    Banks often put the same merchant name in both fields. Keeping both wastes
+    LLM tokens and clutters the UI, so we collapse to a single counterparty
+    string (preferring the longer/richer variant).
     """
     new_cp: str
     new_rm = remittance
