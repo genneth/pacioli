@@ -62,6 +62,23 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 - **Format**: A dictionary caching Gemini's responses to avoid redundant API calls.
 - **Integrity**: Entries can be pruned using the `ops` skill if they become redundant or incorrect.
 
+## Privacy & Security Guardrails
+
+### 1. Data Classification
+*   **Sensitive (Level 1)**: API Keys, Secret IDs, Tokens (`.env`, `token.json`). **NEVER READ ALOUD OR COMMIT.**
+*   **Personal (Level 2)**: Transaction history, raw JSON, CSV exports, account IDs, IBANs, real names. These live in `raw/`, `data/`, and `.csv` files.
+*   **Configuration (Level 3)**: Regex patterns, category lists, logic. These are safe to share/commit *if* they don't contain hardcoded Level 2 data.
+
+### 2. Standing Orders for AI Agents
+*   **Grep, Don't Read**: When inspecting large files in Level 2 directories, always use `search_file_content` with specific patterns rather than `read_file` to minimize exposure of irrelevant PII.
+*   **Scrub Before Commit**: If you are asked to create a new test or documentation example, **generate fake data**. Never copy-paste a real transaction ID or counterparty string into a tracked file.
+*   **Anonymization**: If you see a real name (e.g., "SMITH") or an account number in a string you are processing, replace it with a placeholder like `[USER]` or `[ACCOUNT_ID]` if that string is intended for a non-ignored file.
+*   **Pre-Commit Check**: Before performing a `git add`, scan the content for things that look like Level 1 or Level 2 data. If found, warn the user and stop.
+
+### 3. File System Protection
+*   The `.gitignore` is the primary line of defense. Ensure it always covers `raw/`, `data/`, and `*.csv`.
+*   If you create a new data-storing file, immediately verify if it falls under an existing ignore rule or needs a new one.
+
 ## Large File Handling
 Some files in this project (e.g., `enriched_transactions.csv`, `llm_cache.json`) can grow very large. **Do not attempt to read these files entirely.**
 

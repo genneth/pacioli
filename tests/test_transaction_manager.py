@@ -250,7 +250,7 @@ def test_transfer_detection(temp_data_dir):
         time_of_day=time(0, 0),
         amount=-1000.0,
         currency="GBP",
-        counterparty="GEN SMITH TO REVOLUT",
+        counterparty="TEST USER TO REVOLUT",
         remittance="Transfer",
         unmapped="{}",
     )
@@ -261,7 +261,7 @@ def test_transfer_detection(temp_data_dir):
         time_of_day=time(0, 0),
         amount=1000.0,
         currency="GBP",
-        counterparty="FROM GEN SMITH",
+        counterparty="FROM TEST USER",
         remittance="Topup",
         unmapped="{}",
     )
@@ -298,7 +298,7 @@ def test_transfer_detection(temp_data_dir):
         time_of_day=time(0, 0),
         amount=-200.0,
         currency="GBP",
-        counterparty="GEN SMITH",
+        counterparty="TEST USER",
         remittance="Self",
         unmapped="{}",
     )
@@ -309,7 +309,7 @@ def test_transfer_detection(temp_data_dir):
         time_of_day=time(0, 0),
         amount=200.0,
         currency="GBP",
-        counterparty="GEN SMITH",
+        counterparty="TEST USER",
         remittance="Self",
         unmapped="{}",
     )
