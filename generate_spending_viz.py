@@ -38,7 +38,7 @@ def main():
 
     # Create the figure
     fig = px.line(
-        ts_category_details.to_pandas(),
+        ts_category_details,
         x="timestamp",
         y="cumulative_amount",
         color="category",
@@ -60,7 +60,7 @@ def main():
     ai_only = ts_category_details.filter(pl.col("source") == "AI_CACHED")
     if not ai_only.is_empty():
         ai_scatter = px.scatter(
-            ai_only.to_pandas(),
+            ai_only,
             x="timestamp",
             y="cumulative_amount",
             color="category",
