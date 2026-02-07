@@ -123,6 +123,9 @@ class TransactionManager:
                 amount_map[amt] = []
             amount_map[amt].append(tx)
 
+        name_to_match = os.getenv("TRANSFER_NAME", "USER")
+        name_pattern = re.compile(re.escape(name_to_match), re.IGNORECASE)
+
         for tx in transactions:
             if tx.id in self.transfer_map:
                 continue
@@ -145,8 +148,6 @@ class TransactionManager:
 
                 # Description check
                 # Both must likely involve the user's name to be safe
-                name_to_match = os.getenv("TRANSFER_NAME", "USER")
-                name_pattern = re.compile(rf"{name_to_match}", re.IGNORECASE)
 
                 tx_desc = (tx.counterparty or "") + " " + (tx.remittance or "")
                 cand_desc = (cand.counterparty or "") + " " + (cand.remittance or "")
