@@ -1,36 +1,42 @@
-import json
-import os
-import sys
+import argparse
+
+from transaction_manager import TransactionManager
 
 
-def prune_cache(tx_ids: list[str], cache_file: str = "data/llm_cache.json"):
-    if not os.path.exists(cache_file):
-        print(f"Cache file {cache_file} not found.")
-        return
+def main():
+    parser = argparse.ArgumentParser(description="Prune entries from LLM cache.")
+    parser.add_argument("ids", nargs="*", help="Transaction IDs to prune")
+    parser.add_argument(
+        "--category", help="Prune all entries matching this category (prefix match)"
+    )
+    args = parser.parse_args()
 
-    with open(cache_file) as f:
-        cache = json.load(f)
+    tm = TransactionManager()
+    initial_count = len(tm.llm_cache)
 
-    initial_count = len(cache)
-    removed = []
+    # 1. Prune by ID
+    for tx_id in args.ids:
+        if tx_id in tm.llm_cache:
+            del tm.llm_cache[tx_id]
+            print(f"Pruned ID: {tx_id}")
 
-    for tx_id in tx_ids:
-        if tx_id in cache:
-            del cache[tx_id]
-            removed.append(tx_id)
+    # 2. Prune by Category
+    if args.category:
+        to_delete = [
+            tx_id
+            for tx_id, cached in tm.llm_cache.items()
+            if cached.get("category", "").lower().startswith(args.category.lower())
+        ]
+        for tx_id in to_delete:
+            del tm.llm_cache[tx_id]
+        print(f"Pruned {len(to_delete)} entries matching category '{args.category}'")
 
-    if removed:
-        with open(cache_file, "w") as f:
-            json.dump(cache, f, indent=2)
-        print(f"Successfully pruned {len(removed)} entries from cache.")
-        print(f"Remaining entries: {len(cache)} (was {initial_count})")
+    if len(tm.llm_cache) != initial_count:
+        tm.save_data()
+        print(f"Total pruned: {initial_count - len(tm.llm_cache)} entries.")
     else:
-        print("No matching transaction IDs found in cache.")
+        print("No matches found in cache.")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: uv run prune_cache.py <tx_id1> <tx_id2> ...")
-        sys.exit(1)
-
-    prune_cache(sys.argv[1:])
+    main()

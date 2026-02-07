@@ -30,10 +30,11 @@ Loads all raw transactions, deduplicates them, and applies existing categorizati
 - **Verification:** Check the "Enrichment Summary" table for categorization sources.
 
 ### 3. Prune LLM Cache
-Removes specific transaction IDs from the LLM cache to force re-evaluation.
+Removes specific transaction IDs or entire categories from the LLM cache to force re-evaluation.
 
 **Workflow:**
 - Command: `uv run prune_cache.py <tx_id1> <tx_id2> ...`
+- **By Category:** `uv run prune_cache.py --category "Food & Drink"` (Prefix match)
 - **Verification:** Follow with `uv run enrich_transactions.py`.
 
 ### 4. Cleanup LLM Cache
