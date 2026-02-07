@@ -41,6 +41,8 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
     - `max_amount`: (Optional) Maximum absolute amount to match.
     - `min_day`: (Optional) Minimum day of month (1-31) to match.
     - `max_day`: (Optional) Maximum day of month (1-31) to match.
+    - `min_time`: (Optional) Minimum time of day (ISO format, e.g., "11:30") to match.
+    - `max_time`: (Optional) Maximum time of day (ISO format, e.g., "15:00") to match.
 
 ### `data/manual_assignments.json`
 - **Format**: A dictionary mapping `internalTransactionId` to an object with `clean_name` and `category`.

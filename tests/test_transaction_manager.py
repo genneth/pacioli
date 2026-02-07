@@ -420,3 +420,58 @@ def test_pattern_matching_with_filters(temp_data_dir):
     assert tm.resolve_transaction(tx4)["clean_name"] == "Reimbursement"
     assert tm.resolve_transaction(tx5)["clean_name"] is None
     assert tm.resolve_transaction(tx6)["clean_name"] is None
+
+
+def test_pattern_matching_with_time_filters(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    
+    # Lunch: 11:30 - 15:00
+    tm.patterns.append({
+        "pattern": "McDonalds",
+        "clean_name": "McDonalds Lunch",
+        "category": "Food & Drink > Lunch",
+        "min_time": "11:30",
+        "max_time": "15:00"
+    })
+    
+    # Dinner: 18:00 - 22:00
+    tm.patterns.append({
+        "pattern": "McDonalds",
+        "clean_name": "McDonalds Dinner",
+        "category": "Food & Drink > Dinner",
+        "min_time": "18:00",
+        "max_time": "22:00"
+    })
+
+    # Lunch Match
+    tx_lunch = Transaction(
+        id="tx_l", account_id="acc1", booking_date=date(2023, 1, 1),
+        time_of_day=time(13, 30), amount=-10.0, currency="GBP",
+        counterparty="MCDONALDS", remittance="ref", unmapped="{}"
+    )
+    
+    # Dinner Match
+    tx_dinner = Transaction(
+        id="tx_d", account_id="acc1", booking_date=date(2023, 1, 1),
+        time_of_day=time(19, 0), amount=-15.0, currency="GBP",
+        counterparty="MCDONALDS", remittance="ref", unmapped="{}"
+    )
+    
+    # No Match (Night snack)
+    tx_night = Transaction(
+        id="tx_n", account_id="acc1", booking_date=date(2023, 1, 1),
+        time_of_day=time(23, 30), amount=-5.0, currency="GBP",
+        counterparty="MCDONALDS", remittance="ref", unmapped="{}"
+    )
+
+    res_l = tm.resolve_transaction(tx_lunch)
+    res_d = tm.resolve_transaction(tx_dinner)
+    res_n = tm.resolve_transaction(tx_night)
+
+    assert res_l["clean_name"] == "McDonalds Lunch"
+    assert res_l["category"] == "Food & Drink > Lunch"
+    
+    assert res_d["clean_name"] == "McDonalds Dinner"
+    assert res_d["category"] == "Food & Drink > Dinner"
+    
+    assert res_n["clean_name"] is None

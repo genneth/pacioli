@@ -56,7 +56,7 @@ Dry-run a regex pattern against the transaction history.
 
 **Workflow:**
 - **Basic Test:** `uv run test_pattern.py "my regex"`
-- **Filters:** `--field remittance`, `--min-amount 100`, `--min-day 25`.
+- **Filters:** `--field remittance`, `--min-amount 100`, `--max-amount 500`, `--min-day 25`, `--max-day 31`, `--min-time 11:30`, `--max-time 14:00`.
 
 ### 7. Identify Pattern Candidates
 Analyzes AI-categorized transactions to find high-frequency merchants for automation.

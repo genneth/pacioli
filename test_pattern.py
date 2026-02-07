@@ -19,6 +19,9 @@ def main():
     parser.add_argument("--min-amount", type=float, help="Minimum absolute amount")
     parser.add_argument("--max-amount", type=float, help="Maximum absolute amount")
     parser.add_argument("--min-day", type=int, help="Minimum day of month (1-31)")
+    parser.add_argument("--max-day", type=int, help="Maximum day of month (1-31)")
+    parser.add_argument("--min-time", help="Minimum time of day (HH:MM)")
+    parser.add_argument("--max-time", help="Maximum time of day (HH:MM)")
     args = parser.parse_args()
 
     # Keep logging quiet to focus on output
@@ -36,6 +39,9 @@ def main():
         min_amount=args.min_amount,
         max_amount=args.max_amount,
         min_day=args.min_day,
+        max_day=args.max_day,
+        min_time=args.min_time,
+        max_time=args.max_time,
     )
     
     print(f"\nPattern: '{args.pattern}' (field: {args.field})")
@@ -55,7 +61,7 @@ def main():
 
             # Use a wide horizontal format
             line = (
-                f"{m.booking_date} | {m.amount:>9.2f} {m.currency} | "
+                f"{m.booking_date} {m.time_of_day} | {m.amount:>9.2f} {m.currency} | "
                 f"{m.counterparty[:40]:<40} | "
                 f"{category[:30]:<30} ({source:<9})"
             )

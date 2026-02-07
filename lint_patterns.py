@@ -44,7 +44,10 @@ def main():
             field=p_field,
             min_amount=p.get("min_amount"),
             max_amount=p.get("max_amount"),
-            min_day=p.get("min_day")
+            min_day=p.get("min_day"),
+            max_day=p.get("max_day"),
+            min_time=p.get("min_time"),
+            max_time=p.get("max_time")
         )
         
         # Only count hits that aren't overridden by higher priority sources

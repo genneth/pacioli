@@ -3,6 +3,7 @@ import logging
 import os
 import re
 from dataclasses import asdict
+from datetime import time
 from typing import Any
 
 import polars as pl
@@ -240,6 +241,23 @@ class TransactionManager:
             if max_day is not None and tx.booking_date.day > int(max_day):
                 continue
 
+            # Check time-of-day constraints
+            min_time = pattern.get("min_time")
+            if min_time is not None:
+                try:
+                    if tx.time_of_day < time.fromisoformat(min_time):
+                        continue
+                except ValueError:
+                    logging.warning(f"Invalid min_time format in pattern: {min_time}")
+
+            max_time = pattern.get("max_time")
+            if max_time is not None:
+                try:
+                    if tx.time_of_day > time.fromisoformat(max_time):
+                        continue
+                except ValueError:
+                    logging.warning(f"Invalid max_time format in pattern: {max_time}")
+
             pattern_matches.append(
                 {
                     "clean_name": pattern.get("clean_name"),
@@ -374,6 +392,9 @@ class TransactionManager:
         min_amount: float | None = None,
         max_amount: float | None = None,
         min_day: int | None = None,
+        max_day: int | None = None,
+        min_time: str | None = None,
+        max_time: str | None = None,
     ) -> list[Transaction]:
         """
         Tests a regex pattern against a list of transactions with optional filters.
@@ -399,6 +420,21 @@ class TransactionManager:
                 continue
             if min_day is not None and tx.booking_date.day < min_day:
                 continue
+            if max_day is not None and tx.booking_date.day > max_day:
+                continue
+
+            if min_time is not None:
+                try:
+                    if tx.time_of_day < time.fromisoformat(min_time):
+                        continue
+                except ValueError:
+                    pass
+            if max_time is not None:
+                try:
+                    if tx.time_of_day > time.fromisoformat(max_time):
+                        continue
+                except ValueError:
+                    pass
 
             matches.append(tx)
         return matches
@@ -569,7 +605,14 @@ Guidelines:
    - For individuals, use "First Last".
    - For transfers, use "Transfer to/from [Entity Name]".
 2. **Category**: Choose the BEST fit from the provided list.
-   - Use "Time" to distinguish meals (Breakfast vs Lunch vs Dinner vs Nightlife).
+   - **Meal Timing**: Use "Time" to distinguish:
+     - **Breakfast**: 05:00 - 10:30
+     - **Lunch / Takeaway Lunch**: 10:30 - 16:00
+     - **Dinner / Takeaway Dinner**: 16:00 - 22:00
+     - **Nightlife**: 22:00 - 05:00
+   - **Amount Heuristics**:
+     - If Category is "Coffee & Snacks" but "Amt" > £30, it is likely a "Restaurant" or "Takeaway" order (e.g., buying for a group or a large cake).
+     - If Category is "Restaurants" but "Amt" < £10, it is likely "Coffee & Snacks" (e.g., just a drink).
    - Use "Amt" to distinguish subscriptions (fixed/round #s) vs regular spending.
    - Use "Extra" JSON data if standard fields are ambiguous.
    - If no category fits well, use "Uncategorized".
