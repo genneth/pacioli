@@ -239,7 +239,8 @@ def test_test_pattern_returns_transactions(temp_data_dir):
     assert results[0].id == "tx1"
 
 
-def test_transfer_detection(temp_data_dir):
+def test_transfer_detection(temp_data_dir, monkeypatch):
+    monkeypatch.setenv("TRANSFER_NAME", "TEST USER")
     tm = TransactionManager(data_dir=temp_data_dir)
 
     # Valid Transfer Pair
