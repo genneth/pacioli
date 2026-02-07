@@ -19,13 +19,12 @@ class Client:
     """
 
     _base_url = "https://bankaccountdata.gocardless.com/api/v2/"
-    _secret_id = dotenv.get_key(".env", "GOCARDLESS_SECRET_ID")
-    _secret_key = dotenv.get_key(".env", "GOCARDLESS_SECRET_KEY")
-
     _token_file = "token.json"
-    token: None | dict[str, str] = None
 
     def __init__(self):
+        self._secret_id = dotenv.get_key(".env", "GOCARDLESS_SECRET_ID")
+        self._secret_key = dotenv.get_key(".env", "GOCARDLESS_SECRET_KEY")
+        self.token: dict[str, str] | None = None
         if not (self.try_load_token() or self.try_get_new_token()):
             raise Exception("Failed to load token or to get a new token")
         if not (
