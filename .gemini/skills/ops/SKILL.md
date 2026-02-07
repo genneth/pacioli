@@ -96,6 +96,13 @@ Analyzes all patterns to identify dead, inefficient, or overlapping rules.
     - `[HINT]`: Low-utility patterns (1-3 transactions).
 - **Judgment Call:** Keep patterns for recurring services; move one-offs to Manual Assignments.
 
+### 11. Check for PII/Secrets
+Scans all files currently tracked by git for hardcoded secrets or PII (e.g., real names, account IDs).
+
+**Workflow:**
+- Command: `uv run python check_pii.py`
+- **Action on Failure:** Immediately remove the sensitive data or add the file to `.gitignore`.
+
 ## Combined Workflows (Chains)
 
 ### A. Pattern Creation Chain

@@ -14,6 +14,7 @@ wheels/
 
 # pacoli specific secrets
 token.json
+pii_patterns.json
 raw/
 data/
 *.csv

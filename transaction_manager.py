@@ -7,10 +7,14 @@ from datetime import time
 from typing import Any
 
 import polars as pl
+from dotenv import load_dotenv
 from google import genai
 from pydantic import BaseModel
 
 from transaction_loader import Transaction
+
+# Load environment variables (.env)
+load_dotenv()
 
 # Paths
 DATA_DIR = "data"
@@ -144,7 +148,8 @@ class TransactionManager:
 
                 # Description check
                 # Both must likely involve the user's name to be safe
-                name_pattern = re.compile(r"SMITH", re.IGNORECASE)
+                name_to_match = os.getenv("TRANSFER_NAME", "USER")
+                name_pattern = re.compile(rf"{name_to_match}", re.IGNORECASE)
 
                 tx_desc = (tx.counterparty or "") + " " + (tx.remittance or "")
                 cand_desc = (cand.counterparty or "") + " " + (cand.remittance or "")

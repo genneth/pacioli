@@ -65,7 +65,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 ## Privacy & Security Guardrails
 
 ### 1. Data Classification
-*   **Sensitive (Level 1)**: API Keys, Secret IDs, Tokens (`.env`, `token.json`). **NEVER READ ALOUD OR COMMIT.**
+*   **Sensitive (Level 1)**: API Keys, Secret IDs, Tokens, and Personal Identifiers (`.env`, `token.json`, `TRANSFER_NAME`). **NEVER READ ALOUD OR COMMIT.**
 *   **Personal (Level 2)**: Transaction history, raw JSON, CSV exports, account IDs, IBANs, real names. These live in `raw/`, `data/`, and `.csv` files.
 *   **Configuration (Level 3)**: Regex patterns, category lists, logic. These are safe to share/commit *if* they don't contain hardcoded Level 2 data.
 

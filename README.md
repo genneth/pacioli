@@ -24,6 +24,7 @@ directory name mapping to the GoCardless account id and therefore linking everyt
 GOCARDLESS_SECRET_ID = "..."
 GOCARDLESS_SECRET_KEY = "..."
 GOOGLE_API_KEY = "..."
+TRANSFER_NAME = "..." # Your name as it appears in bank transfers (e.g. "SMITH")
 ```
 
 ## Operational Workflows (Gemini CLI)
