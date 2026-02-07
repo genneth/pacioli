@@ -18,6 +18,7 @@ pii_patterns.json
 raw/
 data/
 *.csv
+spending_viz.html
 
 # Tool caches
 .mypy_cache/
