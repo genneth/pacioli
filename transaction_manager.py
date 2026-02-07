@@ -210,56 +210,8 @@ class TransactionManager:
         # 3. Patterns: Regex rules for recurring/known merchants
         pattern_matches = []
         for pattern in self.patterns:
-            p_str = pattern.get("pattern", "")
-            p_field = pattern.get("field", "counterparty")
-
-            target_text = ""
-            if p_field == "counterparty":
-                target_text = tx.counterparty or ""
-            elif p_field == "remittance":
-                target_text = tx.remittance or ""
-            elif p_field == "any":
-                target_text = f"{tx.counterparty or ''} {tx.remittance or ''}"
-
-            # Check regex
-            if not re.search(p_str, target_text, re.IGNORECASE):
+            if not self._tx_matches_pattern(tx, pattern):
                 continue
-
-            # Check amount constraints
-            amt = abs(tx.amount)
-            min_amt = pattern.get("min_amount")
-            if min_amt is not None and amt < float(min_amt):
-                continue
-
-            max_amt = pattern.get("max_amount")
-            if max_amt is not None and amt > float(max_amt):
-                continue
-
-            # Check timing constraints
-            min_day = pattern.get("min_day")
-            if min_day is not None and tx.booking_date.day < int(min_day):
-                continue
-
-            max_day = pattern.get("max_day")
-            if max_day is not None and tx.booking_date.day > int(max_day):
-                continue
-
-            # Check time-of-day constraints
-            min_time = pattern.get("min_time")
-            if min_time is not None:
-                try:
-                    if tx.time_of_day < time.fromisoformat(min_time):
-                        continue
-                except ValueError:
-                    logging.warning(f"Invalid min_time format in pattern: {min_time}")
-
-            max_time = pattern.get("max_time")
-            if max_time is not None:
-                try:
-                    if tx.time_of_day > time.fromisoformat(max_time):
-                        continue
-                except ValueError:
-                    logging.warning(f"Invalid max_time format in pattern: {max_time}")
 
             pattern_matches.append(
                 {
@@ -267,7 +219,7 @@ class TransactionManager:
                     "category": pattern.get("category"),
                     "source": "PATTERN",
                     "confidence": 0.9,
-                    "pattern_matched": p_str,
+                    "pattern_matched": pattern.get("pattern", ""),
                 }
             )
 
@@ -387,6 +339,58 @@ class TransactionManager:
             "final_result": final_result,
         }
 
+    @staticmethod
+    def _tx_matches_pattern(tx: Transaction, pattern: dict[str, Any]) -> bool:
+        """Checks if a transaction matches a pattern's regex and all constraints."""
+        p_str = pattern.get("pattern", "")
+        p_field = pattern.get("field", "counterparty")
+
+        target_text = ""
+        if p_field == "counterparty":
+            target_text = tx.counterparty or ""
+        elif p_field == "remittance":
+            target_text = tx.remittance or ""
+        elif p_field == "any":
+            target_text = f"{tx.counterparty or ''} {tx.remittance or ''}"
+
+        if not re.search(p_str, target_text, re.IGNORECASE):
+            return False
+
+        amt = abs(tx.amount)
+        min_amt = pattern.get("min_amount")
+        if min_amt is not None and amt < float(min_amt):
+            return False
+
+        max_amt = pattern.get("max_amount")
+        if max_amt is not None and amt > float(max_amt):
+            return False
+
+        min_day = pattern.get("min_day")
+        if min_day is not None and tx.booking_date.day < int(min_day):
+            return False
+
+        max_day = pattern.get("max_day")
+        if max_day is not None and tx.booking_date.day > int(max_day):
+            return False
+
+        min_time = pattern.get("min_time")
+        if min_time is not None:
+            try:
+                if tx.time_of_day < time.fromisoformat(min_time):
+                    return False
+            except ValueError:
+                logging.warning(f"Invalid min_time format in pattern: {min_time}")
+
+        max_time = pattern.get("max_time")
+        if max_time is not None:
+            try:
+                if tx.time_of_day > time.fromisoformat(max_time):
+                    return False
+            except ValueError:
+                logging.warning(f"Invalid max_time format in pattern: {max_time}")
+
+        return True
+
     def test_pattern(
         self,
         transactions: list[Transaction],
@@ -403,44 +407,17 @@ class TransactionManager:
         Tests a regex pattern against a list of transactions with optional filters.
         Returns a list of transactions matching the pattern and filters.
         """
-        matches = []
-        for tx in transactions:
-            target_text = ""
-            if field == "counterparty":
-                target_text = tx.counterparty or ""
-            elif field == "remittance":
-                target_text = tx.remittance or ""
-            elif field == "any":
-                target_text = f"{tx.counterparty or ''} {tx.remittance or ''}"
-
-            if not re.search(pattern, target_text, re.IGNORECASE):
-                continue
-
-            amt = abs(tx.amount)
-            if min_amount is not None and amt < min_amount:
-                continue
-            if max_amount is not None and amt > max_amount:
-                continue
-            if min_day is not None and tx.booking_date.day < min_day:
-                continue
-            if max_day is not None and tx.booking_date.day > max_day:
-                continue
-
-            if min_time is not None:
-                try:
-                    if tx.time_of_day < time.fromisoformat(min_time):
-                        continue
-                except ValueError:
-                    pass
-            if max_time is not None:
-                try:
-                    if tx.time_of_day > time.fromisoformat(max_time):
-                        continue
-                except ValueError:
-                    pass
-
-            matches.append(tx)
-        return matches
+        p = {
+            "pattern": pattern,
+            "field": field,
+            "min_amount": min_amount,
+            "max_amount": max_amount,
+            "min_day": min_day,
+            "max_day": max_day,
+            "min_time": min_time,
+            "max_time": max_time,
+        }
+        return [tx for tx in transactions if self._tx_matches_pattern(tx, p)]
 
     def purge_override_cache(self, transactions: list[Transaction]) -> int:
         """
