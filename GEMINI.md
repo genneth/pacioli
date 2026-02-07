@@ -69,7 +69,13 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 *   **Personal (Level 2)**: Transaction history, raw JSON, CSV exports, account IDs, IBANs, real names. These live in `raw/`, `data/`, and `.csv` files.
 *   **Configuration (Level 3)**: Regex patterns, category lists, logic. These are safe to share/commit *if* they don't contain hardcoded Level 2 data.
 
-### 2. Standing Orders for AI Agents
+### 2. Pattern Design Mandates
+*   **Disjoint Patterns**: All regex patterns in `data/patterns.json` MUST be disjoint (mutually exclusive) for any given transaction. 
+  - The system picks the *first* matching pattern, which creates ambiguity if they overlap.
+  - Use `min_amount`, `max_amount`, `min_time`, or `max_time` constraints to ensure that broad "catch-all" patterns do not overlap with specific "constrained" patterns.
+  - Never rely on "fallback" behavior where a less-specific pattern is intended to catch misses from a more-specific one without explicit exclusion criteria in the broad pattern.
+
+### 3. Standing Orders for AI Agents
 *   **Custom Heuristics**: Always consult `data/ai_instructions.md` for project-specific naming philosophies, meal timing, and personal schedule context before performing enrichment or labeling.
 *   **Grep, Don't Read**: When inspecting large files in Level 2 directories, always use `search_file_content` with specific patterns rather than `read_file` to minimize exposure of irrelevant PII.
 *   **Scrub Before Commit**: If you are asked to create a new test or documentation example, **generate fake data**. Never copy-paste a real transaction ID or counterparty string into a tracked file.

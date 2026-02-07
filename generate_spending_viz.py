@@ -30,7 +30,9 @@ def main():
 
     # Join the original df back to get clean_name and counterparty for hover
     ts_category_details = ts_category_sums.join(
-        df.select(["timestamp", "category", "clean_name", "counterparty", "amount"]),
+        df.select(
+            ["timestamp", "category", "clean_name", "counterparty", "amount", "source"]
+        ),
         on=["timestamp", "category"],
     ).sort(["category", "timestamp"])
 
@@ -41,24 +43,42 @@ def main():
         y="cumulative_amount",
         color="category",
         line_shape="hv",
-        hover_data=["clean_name", "counterparty", "amount"],
-        title="Cumulative Income and Spending by Category",
+        hover_data=["clean_name", "counterparty", "amount", "source"],
+        title="Cumulative Income and Spending by Category (AI Labels Highlighted)",
         labels={
             "cumulative_amount": "Total (£)",
             "timestamp": "Time",
             "clean_name": "Counterparty",
             "counterparty": "Raw Counterparty",
             "amount": "Amount",
+            "source": "Label Source",
         },
         template="plotly_white",
     )
+
+    # Add scatter points for AI_CACHED transactions
+    ai_only = ts_category_details.filter(pl.col("source") == "AI_CACHED")
+    if not ai_only.is_empty():
+        ai_scatter = px.scatter(
+            ai_only.to_pandas(),
+            x="timestamp",
+            y="cumulative_amount",
+            color="category",
+            hover_data=["clean_name", "counterparty", "amount", "source"],
+        )
+        # Update markers to be distinct
+        for trace in ai_scatter.data:
+            trace.update(
+                mode="markers",
+                marker=dict(symbol="x", size=5),
+                showlegend=False,
+            )
+            fig.add_trace(trace)
 
     # Save to HTML
     fig.write_html("spending_viz.html")
 
     print("Visualization saved to spending_viz.html")
-
-    print("Visualizations saved to spending_viz.html")
 
 
 if __name__ == "__main__":
