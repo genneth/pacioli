@@ -140,6 +140,10 @@ All commands should be run using `uv` to ensure the correct environment and depe
     ```bash
     uv run update_transactions.py
     ```
+*   **Visualize Spending:**
+    ```bash
+    uv run generate_spending_viz.py
+    ```
 *   **Run Tests:**
     ```bash
     uv run pytest
@@ -177,7 +181,8 @@ The project includes a specialized `ops` skill for managing the transaction pipe
 2.  **Enrich Transactions:** `uv run enrich_transactions.py` - Loads, deduplicates, and categorizes transactions.
     - Uses `tqdm` for progress monitoring.
     - Outputs a summary of categorization sources (`PATTERN`, `AI_CACHED`, `TRANSFER`, etc.).
-    - Highlights uncategorized transactions for review.
+    - **Follow-up:** If all transactions are categorized (`[SUCCESS]`), run `uv run generate_spending_viz.py`.
+    - **Resolution:** If transactions are missing categories (`[ALERT]`), proceed to **Uncategorized Decision Tree**.
 3.  **Prune LLM Cache:** `uv run prune_cache.py <tx_id> ...` - Removes specific transactions from `llm_cache.json` to force re-evaluation.
 
 **Key Categories:**

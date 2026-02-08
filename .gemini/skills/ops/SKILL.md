@@ -27,7 +27,9 @@ Loads all raw transactions, deduplicates them, and applies existing categorizati
 **Workflow:**
 - Command: `uv run enrich_transactions.py`
 - **Output:** `all_transactions.csv` (raw flattened) and `enriched_transactions.csv` (categorized).
-- **Verification:** Check the "Enrichment Summary" table for categorization sources.
+- **Verification:**
+    - If output shows `[SUCCESS] All transactions are categorized.`, follow with `uv run generate_spending_viz.py`.
+    - If output shows `[ALERT] X transactions are still uncategorized.`, proceed to **Decision Tree (Workflow D)**.
 
 ### 3. Prune LLM Cache
 Removes specific transaction IDs or entire categories from the LLM cache to force re-evaluation.
@@ -35,14 +37,14 @@ Removes specific transaction IDs or entire categories from the LLM cache to forc
 **Workflow:**
 - Command: `uv run prune_cache.py <tx_id1> <tx_id2> ...`
 - **By Category:** `uv run prune_cache.py --category "Food & Drink"` (Prefix match)
-- **Verification:** Follow with `uv run enrich_transactions.py`.
+- **Verification:** Follow with **Task 2**.
 
 ### 4. Cleanup LLM Cache
 Automatically removes AI cache entries that are now covered by more deterministic rules.
 
 **Workflow:**
 - Command: `uv run cleanup_cache.py`
-- **Verification:** Follow with `uv run enrich_transactions.py`.
+- **Verification:** Follow with **Task 2**.
 
 ### 5. Process LLM Labels
 Sends uncategorized transactions to Gemini for AI labeling. **Note:** Incurs API costs; prefer manual labeling or patterns where possible.
@@ -50,7 +52,7 @@ Sends uncategorized transactions to Gemini for AI labeling. **Note:** Incurs API
 **Workflow:**
 - **Standard Run:** `uv run process_llm.py`
 - **Force Relabel:** `uv run process_llm.py --force`
-- **Verification:** Follow with `uv run enrich_transactions.py`.
+- **Verification:** Follow with **Task 2**.
 
 ### 6. Test Regex Pattern
 Dry-run a regex pattern against the transaction history.
@@ -108,14 +110,17 @@ Scans all files currently tracked by git for hardcoded secrets or PII (e.g., rea
 ### A. Pattern Creation Chain
 Use after adding or modifying a pattern to verify health and apply changes immediately.
 - `uv run lint_patterns.py; uv run cleanup_cache.py; uv run enrich_transactions.py`
+- Follow with visualization if successful.
 
 ### B. Sync & Initial Pass
 The primary daily workflow. Fetches new data and attempts automatic categorization.
 - `uv run update_transactions.py; uv run enrich_transactions.py`
+- Follow with visualization if successful.
 
 ### C. Optimization Loop
 Use periodically to keep the AI cache lean.
 - `uv run cleanup_cache.py; uv run enrich_transactions.py`
+- Follow with visualization if successful.
 
 ### D. Uncategorized Decision Tree
 If transactions remain uncategorized after **Chain B** (source is `null`):
