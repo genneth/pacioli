@@ -1,7 +1,6 @@
 import logging
 from datetime import date, time
 
-import pytest
 from polars import col as C
 
 from transaction_loader import Transaction

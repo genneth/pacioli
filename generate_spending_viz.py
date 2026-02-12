@@ -1,5 +1,6 @@
 import plotly.express as px
 import polars as pl
+from polars import col as C
 
 
 def main():
@@ -8,24 +9,22 @@ def main():
 
     # Create timestamp from booking_date and time_of_day
     df = df.with_columns(
-        pl.format("{}T{}", pl.col("booking_date"), pl.col("time_of_day"))
-        .str.to_datetime()
-        .alias("timestamp")
+        pl.format("{}T{}", C.booking_date, C.time_of_day).str.to_datetime().alias("timestamp")
     ).sort("timestamp")
 
     # Exclude "Excluded" to focus on real spending/income
-    df = df.filter(~pl.col("category").is_in(["Excluded", None]))
+    df = df.filter(~C.category.is_in(["Excluded", None]))
 
     # Group by timestamp and category, summing amounts
     ts_category_sums = (
         df.group_by(["timestamp", "category"])
-        .agg(pl.col("amount").sum().alias("tx_amount"))
+        .agg(C.amount.sum().alias("tx_amount"))
         .sort(["category", "timestamp"])
     )
 
     # Calculate cumulative sum per category
     ts_category_sums = ts_category_sums.with_columns(
-        pl.col("tx_amount").cum_sum().over("category").alias("cumulative_amount")
+        C.tx_amount.cum_sum().over("category").alias("cumulative_amount")
     )
 
     # Join the original df back to get clean_name and counterparty for hover
@@ -57,7 +56,7 @@ def main():
     )
 
     # Add scatter points for AI_CACHED transactions
-    ai_only = ts_category_details.filter(pl.col("source") == "AI_CACHED")
+    ai_only = ts_category_details.filter(C.source == "AI_CACHED")
     if not ai_only.is_empty():
         ai_scatter = px.scatter(
             ai_only,

@@ -14,7 +14,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
     *   Uses an **overlapping fetch window** to ensure late-settling transactions are captured.
     *   **Idempotent:** Uses exclusive file creation (`x` mode) to prevent overwriting existing data.
 
-2.  **Loading (`read_existing_transactions.py`):**
+2.  **Loading (`transaction_loader.py`):**
     *   Reads all JSON files from `raw/`.
     *   **Deduplicates** transactions based on `internalTransactionId`.
     *   Returns a dictionary of unique transactions per account.
@@ -82,7 +82,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 *   **Anonymization**: If you see a real name (e.g., "SMITH") or an account number in a string you are processing, replace it with a placeholder like `[USER]` or `[ACCOUNT_ID]` if that string is intended for a non-ignored file.
 *   **Pre-Commit Check**: Before performing a `git add`, scan the content for things that look like Level 1 or Level 2 data. If found, warn the user and stop.
 
-### 3. File System Protection
+### 4. File System Protection
 *   The `.gitignore` is the primary line of defense. Ensure it always covers `raw/`, `data/`, and `*.csv`.
 *   If you create a new data-storing file, immediately verify if it falls under an existing ignore rule or needs a new one.
 
@@ -106,7 +106,7 @@ Instead, use Windows command-line tools or targeted tool calls to inspect subset
 *   **`update_transactions.py`**: The primary script to sync with the bank. Safe to run repeatedly.
 *   **`transaction_manager.py`**: Contains the `TransactionManager` class which handles the business logic for categorization and LLM interaction.
 *   **`go_cardless_client.py`**: A custom wrapper around the GoCardless Bank Account Data API (formerly Nordigen). Handles token management (`token.json`).
-*   **`read_existing_transactions.py`**: Helper module to load and deduplicate raw data.
+*   **`transaction_loader.py`**: Helper module to load and deduplicate raw data.
 
 ## Transaction Manager Actions
 The `TransactionManager` class in `transaction_manager.py` provides the following core actions:

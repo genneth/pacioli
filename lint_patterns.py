@@ -1,35 +1,26 @@
 import logging
+
 import polars as pl
 from polars import col as C
-import re
 
 from transaction_loader import load_transactions
 from transaction_manager import TransactionManager
 
+
 def main():
     logging.basicConfig(level=logging.WARNING)
-    
+
     rows = load_transactions()
     tm = TransactionManager()
-    
+
     print("\n--- Pattern Linting Report ---\n")
-    
+
     # 1. Calculate effective hits for each pattern
     # A hit only counts if the transaction isn't already handled by a higher priority source
     tm.detect_transfers(rows)
-    
+
     # Pre-calculate priority status for all transactions
-    tx_status = {}
-    for tx in rows:
-        matches = tm._find_matches(tx)
-        priority_source = None
-        if "MANUAL" in matches:
-            priority_source = "MANUAL"
-        elif "TRANSFER" in matches:
-            priority_source = "TRANSFER"
-        elif "ZERO_AMOUNT" in matches:
-            priority_source = "ZERO_AMOUNT"
-        tx_status[tx.id] = priority_source
+    tx_status = {tx.id: tm.get_priority_source(tx) for tx in rows}
 
     results = []
     for p in tm.patterns:
@@ -37,32 +28,33 @@ def main():
         p_field = p.get("field", "counterparty")
         clean_name = p.get("clean_name", "Unknown")
         category = p.get("category", "Uncategorized")
-        
+
         all_matches = tm.test_pattern(
-            rows, 
-            pattern_str, 
+            rows,
+            pattern_str,
             field=p_field,
             min_amount=p.get("min_amount"),
             max_amount=p.get("max_amount"),
             min_day=p.get("min_day"),
             max_day=p.get("max_day"),
             min_time=p.get("min_time"),
-            max_time=p.get("max_time")
+            max_time=p.get("max_time"),
         )
-        
+
         # Only count hits that aren't overridden by higher priority sources
         effective_matches = [m for m in all_matches if tx_status[m.id] is None]
-        
+
+        sample_id = effective_matches[0].id if effective_matches else (all_matches[0].id if all_matches else None)
         results.append({
             "pattern": pattern_str,
             "clean_name": clean_name,
             "category": category,
             "hits": len(effective_matches),
-            "sample_id": effective_matches[0].id if effective_matches else (all_matches[0].id if all_matches else None)
+            "sample_id": sample_id,
         })
-    
+
     df = pl.DataFrame(results)
-    
+
     # Check for dead patterns
     dead = df.filter(C.hits == 0)
     if not dead.is_empty():
@@ -81,29 +73,27 @@ def main():
         for row in low_utility.sort("hits", "category").to_dicts():
             print(f"  - ({row['hits']} hits) {row['category']:<25} | {row['pattern']} (ID: {row['sample_id']})")
         print()
-    
+
     # 2. Check for Overlaps (Transactions matching multiple patterns)
-    # We use the existing resolve logic which already checks for this
-    
-    tm.detect_transfers(rows)
     overlap_count = 0
     for tx in rows:
         matches = tm._find_matches(tx)
         if "_ALL_PATTERNS" in matches and len(matches["_ALL_PATTERNS"]) > 1:
             overlap_count += 1
-            if overlap_count <= 5: # Limit output
+            if overlap_count <= 5:
                 pats = [m["pattern_matched"] for m in matches["_ALL_PATTERNS"]]
                 print(f"[WARN] Transaction {tx.id} matched multiple patterns: {pats}")
-    
+
     if overlap_count > 5:
         print(f"... and {overlap_count - 5} more overlaps.")
-    
+
     if overlap_count == 0:
         print("[PASS] No pattern overlaps detected.")
     else:
         print(f"\n[SUMMARY] Found {overlap_count} overlapping transactions.")
 
     print("\nReport complete.")
+
 
 if __name__ == "__main__":
     main()

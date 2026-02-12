@@ -5,32 +5,30 @@ description = "Personal finance tracker using Open Banking APIs and AI-powered t
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "ipython>=9.1.0",
-    "itables>=2.3.0",
-    "jupytext>=1.16.0",
-    "jupyter>=1.1.1",
-    "pandas>=2.2.3",
-    "plotly[express]>=6.0.1",
-    "polars>=1.27.1",
-    "pyarrow>=19.0.1",
-    "pydantic>=2.12.5",
-    "python-dotenv[cli]>=1.1.0",
-    "qrcode[pil]>=8.1",
-    "google-genai>=1.61.0",
-    "tqdm>=4.67.3",
+    "google-genai",
+    "ipython",
+    "itables",
+    "jupytext",
+    "jupyter",
+    "plotly",
+    "polars",
+    "pydantic",
+    "python-dotenv",
+    "requests",
+    "tqdm",
 ]
 
 [dependency-groups]
 dev = [
-    "mypy>=1.19.1",
-    "pytest>=9.0.2",
-    "ruff>=0.14.11",
-    "types-requests>=2.32.4.20260107",
-    "types-tqdm>=4.67.3.20260205",
+    "mypy",
+    "pytest",
+    "ruff",
+    "types-requests",
+    "types-tqdm",
 ]
 
 [tool.ruff]
-line-length = 88
+line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]

@@ -1,8 +1,9 @@
+import json
 import os
 import re
-import sys
-import json
 import subprocess
+import sys
+
 from dotenv import load_dotenv
 
 # Load secrets from .env to check if they are leaked in other files
@@ -49,14 +50,14 @@ def get_tracked_files():
 
 def check_file(file_path):
     """Scans a file for sensitive patterns."""
-    issues = []
+    issues: list[str] = []
     
     # Skip binary files and this script itself
     if file_path.endswith((".png", ".jpg", ".ico", ".pyc")) or file_path == "check_pii.py":
         return issues
 
     try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(file_path, encoding="utf-8", errors="ignore") as f:
             content = f.read()
             for item in SENSITIVE_PATTERNS:
                 if len(item) == 2:

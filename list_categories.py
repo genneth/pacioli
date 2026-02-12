@@ -1,5 +1,6 @@
 from transaction_manager import TransactionManager
 
+
 def main():
     tm = TransactionManager()
     print("\nMaster Category List:")

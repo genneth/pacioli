@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import asdict
 from datetime import time
-from typing import Any
+from typing import Any, cast
 
 import polars as pl
 from dotenv import load_dotenv
@@ -234,6 +234,14 @@ class TransactionManager:
             }
 
         return matches
+
+    def get_priority_source(self, tx: Transaction) -> str | None:
+        """Return the highest-priority non-pattern source, or None if patterns would apply."""
+        matches = self._find_matches(tx)
+        for source in ("MANUAL", "TRANSFER", "ZERO_AMOUNT"):
+            if source in matches:
+                return source
+        return None
 
     def resolve_transaction(self, tx: Transaction) -> dict[str, Any]:
         """Pick the single best categorization from all match sources.
@@ -591,8 +599,6 @@ TRANSACTIONS TO PROCESS:
                     "response_schema": CategorizationResponse,
                 },
             )
-
-            from typing import cast
 
             result = cast(CategorizationResponse | None, response.parsed)
 
