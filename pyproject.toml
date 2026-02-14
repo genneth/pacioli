@@ -10,7 +10,7 @@ dependencies = [
     "itables",
     "jupytext",
     "jupyter",
-    "plotly",
+    "plotly[express]",
     "polars",
     "pydantic",
     "python-dotenv",
