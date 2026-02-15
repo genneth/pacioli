@@ -21,11 +21,17 @@ Loads raw transactions and applies the hierarchy: Manual > Transfer > Zero > Pat
 
 ### 3. Agent-Led Categorization
 The primary workflow for resolving "Uncategorized" transactions.
-1. **Find**: `uv run find_uncategorized.py --limit 20`
-2. **Group**: Group similar merchants to process in batches.
-3. **Ground**: `uv run grounding_search.py "Merchant"`
-4. **Research**: Use web search and `ai_instructions.md`.
-5. **Persist**: `uv run update_llm_cache.py --id <tx_id> --name "..." --category "..." --reason "..."`
+1. **Find**: `uv run find_uncategorized.py --limit 100`
+   - **Batching**: Aim for 50-100 transactions per batch. This is large enough to see cross-transaction patterns (e.g., a trip) but small enough to maintain high reasoning performance.
+   - Use `--force` to include transactions already in the AI cache for recategorization.
+2. **Grounding**:
+   - **Read Gold Standard**: Directly read `data/patterns.json` and `data/manual_assignments.json` at the start of the session. These provide the "source of truth" for your style and existing rules.
+   - **Instructions**: Always follow `data/ai_instructions.md`.
+3. **Context Check (Forensics)**:
+   - **Calendar**: Use `calendar.listEvents` to check the transaction date for travel/location context (e.g., "Paris Trip").
+   - **Gmail**: Use `gmail.search` to find receipts for ambiguous amounts/merchants (Query: "Merchant" or "Amount").
+4. **Research**: Use web search if the merchant is entirely unknown.
+5. **Batch Persist**: Use `update_llm_cache.py --batch <file>` to save your decisions efficiently.
 
 ### 4. Promotion to Gold Standard
 When the user requests to "automate" a merchant or "fix" a recurring classification:
