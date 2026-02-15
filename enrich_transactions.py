@@ -24,7 +24,7 @@ def main():
 
     # 2. Enrich Transactions
     logging.info("Enriching transactions...")
-    tm = TransactionManager()  # No genai_client needed for existing data enrichment
+    tm = TransactionManager()
     df_enriched = tm.enrich_transactions(rows)
 
     # 3. Save Enriched Data

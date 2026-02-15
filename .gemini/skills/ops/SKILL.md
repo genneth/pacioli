@@ -1,129 +1,67 @@
 ---
 name: ops
-description: Personal finance operations for Pacioli. Use this skill to sync transactions from bank APIs, audit AI categorizations against regex patterns, and manage the LLM-to-Regex pipeline.
+description: Personal finance operations for Pacioli. Use this skill to sync transactions from bank APIs, manage the categorization cache, and ground decisions in established rules.
 ---
 
 # Ops
 
 ## Overview
-This skill provides a set of operational workflows for managing Pacioli's financial data pipeline. It focuses on maintaining data integrity, syncing with bank APIs, and optimizing the transaction categorization process.
+This skill provides a set of operational workflows for managing Pacioli's financial data pipeline. It focuses on maintaining data integrity, syncing with bank APIs, and managing the lifecycle of transaction categorization from "AI Guest" to "Gold Standard."
 
 ## Core Tasks
 
 ### 1. Sync Transactions
 Syncs the local transaction store with the bank via the GoCardless API.
-
-**Safety & Integrity Warnings:**
-- **Finite History:** Most Open Banking APIs only provide 90 days of transaction history.
-- **Immutable Raw Data:** Script writes to `raw/<account_id>/<date>.json` using exclusive creation (`x` mode).
-
-**Workflow:**
 - Command: `uv run update_transactions.py`
-- Observe the output for: "Downloaded X transaction(s)" or "Account is up to date."
 
 ### 2. Enrich Transactions
-Loads all raw transactions, deduplicates them, and applies existing categorization rules (Manual, Regex Patterns, and AI Cache).
-
-**Workflow:**
+Loads raw transactions and applies the hierarchy: Manual > Transfer > Zero > Pattern > AI/Agent.
 - Command: `uv run enrich_transactions.py`
-- **Output:** `all_transactions.csv` (raw flattened) and `enriched_transactions.csv` (categorized).
-- **Verification:**
-    - If output shows `[SUCCESS] All transactions are categorized.`, follow with `uv run generate_spending_viz.py`.
-    - If output shows `[ALERT] X transactions are still uncategorized.`, proceed to **Decision Tree (Workflow D)**.
+- **Output:** `enriched_transactions.csv`.
 
-### 3. Prune LLM Cache
-Removes specific transaction IDs or entire categories from the LLM cache to force re-evaluation.
+### 3. Agent-Led Categorization
+The primary workflow for resolving "Uncategorized" transactions.
+1. **Find**: `uv run find_uncategorized.py --limit 20`
+2. **Group**: Group similar merchants to process in batches.
+3. **Ground**: `uv run grounding_search.py "Merchant"`
+4. **Research**: Use web search and `ai_instructions.md`.
+5. **Persist**: `uv run update_llm_cache.py --id <tx_id> --name "..." --category "..." --reason "..."`
 
-**Workflow:**
-- Command: `uv run prune_cache.py <tx_id1> <tx_id2> ...`
-- **By Category:** `uv run prune_cache.py --category "Food & Drink"` (Prefix match)
-- **Verification:** Follow with **Task 2**.
+### 4. Promotion to Gold Standard
+When the user requests to "automate" a merchant or "fix" a recurring classification:
+1. **Manual Assignment**: For unique outliers. Edit `data/manual_assignments.json`.
+2. **Pattern Creation**: For recurring merchants.
+    - Test: `uv run test_pattern.py "regex"`
+    - Apply: Add to `data/patterns.json` under the correct category.
+3. **Cleanup**: Run `uv run cleanup_cache.py` to remove now-redundant cache entries.
 
-### 4. Cleanup LLM Cache
-Automatically removes AI cache entries that are now covered by more deterministic rules.
+### 5. Category Management
+The system only accepts categories existing as keys in `data/patterns.json`.
+- **Add Category**: Manually add a new key with an empty list `[]` to `data/patterns.json`.
+- **List Categories**: `uv run list_categories.py`
 
-**Workflow:**
-- Command: `uv run cleanup_cache.py`
-- **Verification:** Follow with **Task 2**.
+### 6. Cache Maintenance
+- **Prune**: `uv run prune_cache.py <tx_id>` (Targeted removal)
+- **Auto-Cleanup**: `uv run cleanup_cache.py` (Removes cache entries shadowed by new patterns/manual assignments)
 
-### 5. Process LLM Labels
-Sends uncategorized transactions to Gemini for AI labeling. **Note:** Incurs API costs; prefer manual labeling or patterns where possible.
-
-**Workflow:**
-- **Standard Run:** `uv run process_llm.py`
-- **Force Relabel:** `uv run process_llm.py --force`
-- **Verification:** Follow with **Task 2**.
-
-### 6. Test Regex Pattern
-Dry-run a regex pattern against the transaction history.
-
-**Workflow:**
-- **Basic Test:** `uv run test_pattern.py "my regex"`
-- **Filters:** `--field remittance`, `--min-amount 100`, `--max-amount 500`, `--min-day 25`, `--max-day 31`, `--min-time 11:30`, `--max-time 14:00`.
-
-### 7. Identify Pattern Candidates
-Analyzes AI-categorized transactions to find high-frequency merchants for automation.
-
-**Workflow:**
-- **Standard Run:** `uv run identify_candidates.py`
-- **Deep Scan:** `uv run identify_candidates.py --mode raw`
-- **Rule:** Always follow the **Entity-First Philosophy** for `clean_name`.
-
-### 8. List Categories
-Displays the current master list of categories defined in the system.
-
-**Workflow:**
-- Command: `uv run list_categories.py`
-
-### 9. Manually Assign Transaction
-Manually overrides the categorization for a specific transaction ID. Use for "one-off" outliers.
-
-**Workflow:**
-1. Identify the transaction ID.
-2. Add an entry to `data/manual_assignments.json`:
-   ```json
-   {
-     "tx_id": { "clean_name": "Merchant Name", "category": "Category > Subcategory" }
-   }
-   ```
-
-### 10. Lint Regex Patterns
-Analyzes all patterns to identify dead, inefficient, or overlapping rules.
-
-**Workflow:**
-- Command: `uv run lint_patterns.py`
-- **Output Types:**
-    - `[FAIL]`: Dead patterns (ZERO transactions). **Must be resolved.**
-    - `[WARN]`: Pattern overlaps. **Must be resolved.**
-    - `[HINT]`: Low-utility patterns (1-3 transactions).
-- **Judgment Call:** Keep patterns for recurring services; move one-offs to Manual Assignments.
-
-### 11. Check for PII/Secrets
-Scans all files currently tracked by git for hardcoded secrets or PII (e.g., real names, account IDs).
-
-**Workflow:**
-- Command: `uv run python check_pii.py`
-- **Action on Failure:** Immediately remove the sensitive data or add the file to `.gitignore`.
+### 7. Diagnostics & Quality
+- **Explain**: `uv run python -c "from transaction_manager import TransactionManager, load_transactions; tm=TransactionManager(); txs=load_transactions(); print(tm.explain_transaction(txs[0]))"` (Replace index with target)
+- **Lint**: `uv run lint_patterns.py` (Find dead/overlapping patterns)
+- **PII Check**: `uv run python check_pii.py`
 
 ## Combined Workflows (Chains)
 
-### A. Pattern Creation Chain
-Use after adding or modifying a pattern to verify health and apply changes immediately.
-- `uv run lint_patterns.py; uv run cleanup_cache.py; uv run enrich_transactions.py`
-- Follow with visualization if successful.
+### A. The "Daily Pass"
+`Sync -> Enrich -> Categorize -> Enrich -> Visualize`
+1. `uv run update_transactions.py`
+2. `uv run enrich_transactions.py`
+3. (If gaps exist) Run **Agent-Led Categorization** (Task 3).
+4. `uv run enrich_transactions.py`
+5. `uv run generate_spending_viz.py`
 
-### B. Sync & Initial Pass
-The primary daily workflow. Fetches new data and attempts automatic categorization.
-- `uv run update_transactions.py; uv run enrich_transactions.py`
-- Follow with visualization if successful.
-
-### C. Optimization Loop
-Use periodically to keep the AI cache lean.
-- `uv run cleanup_cache.py; uv run enrich_transactions.py`
-- Follow with visualization if successful.
-
-### D. Uncategorized Decision Tree
-If transactions remain uncategorized after **Chain B** (source is `null`):
-1. **Manual Assignment**: If it's a one-off outlier, use **Task 9**. (Cheapest/Fastest)
-2. **Pattern Creation**: If it's recurring, use **Task 6**, then **Task 7**, then **Chain A**. (Best for automation)
-3. **LLM Processing**: If merchant is complex or unknown, use **Task 5**. (Most expensive; use sparingly)
+### B. The "Pattern Hardening" Loop
+`Identify Candidates -> Create Pattern -> Cleanup -> Lint`
+1. `uv run identify_candidates.py` (Finds recurring merchants in the cache).
+2. Ask User: "Would you like me to create a pattern for [Merchant]?"
+3. Create pattern in `data/patterns.json` (Task 4).
+4. `uv run cleanup_cache.py; uv run lint_patterns.py; uv run enrich_transactions.py`

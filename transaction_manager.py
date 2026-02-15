@@ -4,12 +4,10 @@ import os
 import re
 from dataclasses import asdict
 from datetime import time
-from typing import Any, cast
+from typing import Any
 
 import polars as pl
 from dotenv import load_dotenv
-from google import genai
-from pydantic import BaseModel
 
 from transaction_loader import Transaction
 
@@ -18,24 +16,8 @@ load_dotenv()
 DATA_DIR = "data"
 
 
-class TransactionResult(BaseModel):
-    id: str
-    clean_name: str
-    category: str
-    category_reason: str
-    suggested_category: str | None = None
-    suggestion_reason: str | None = None
-
-
-class CategorizationResponse(BaseModel):
-    transactions: list[TransactionResult]
-
-
 class TransactionManager:
-    def __init__(
-        self, genai_client: genai.Client | None = None, data_dir: str = DATA_DIR
-    ):
-        self.client = genai_client
+    def __init__(self, data_dir: str = DATA_DIR):
         self.data_dir = data_dir
         self.manual_assignments_file = os.path.join(
             self.data_dir, "manual_assignments.json"
@@ -227,7 +209,7 @@ class TransactionManager:
                 "clean_name": cached.get("clean_name"),
                 "category": cached.get("category"),
                 "category_reason": cached.get("category_reason"),
-                "source": "AI_CACHED",
+                "source": cached.get("source", "AI_CACHED"),
                 "confidence": cached.get("confidence", 0.7),
                 "suggested_category": cached.get("suggested_category"),
                 "suggestion_reason": cached.get("suggestion_reason"),
@@ -465,162 +447,3 @@ class TransactionManager:
             raise ValueError("No transactions to enrich.")
 
         return pl.DataFrame(all_txs, infer_schema_length=None)
-
-    def batch_process_llm(
-        self,
-        transactions: list[Transaction],
-        force_update=False,
-    ):
-        """
-        Identifies unlabelled transactions and queries Gemini.
-        Updates the cache and saves.
-        """
-        if not self.client:
-            logging.warning("No Gemini client provided.")
-            return
-
-        if not transactions:
-            return
-
-        # Enrich first so we can filter out already-categorized transactions
-        try:
-            df = self.enrich_transactions(transactions)
-        except ValueError:
-            return
-
-        filter_expr = pl.col("source").is_null()
-        if force_update:
-            filter_expr = filter_expr | (pl.col("source") == "AI_CACHED")
-
-        to_process_df = df.filter(filter_expr)
-        to_process = to_process_df.to_dicts()
-
-        if not to_process:
-            logging.info("No new transactions to process with LLM.")
-            return
-
-        logging.info(f"Sending {len(to_process)} transactions to LLM...")
-
-        # Chunking to avoid context limits
-        # Gemini 3.0 Flash has a 64k output token limit.
-        # ~150 txs * ~200 tokens/tx (conservative) = 30k tokens output.
-        # This leaves a safe buffer.
-        chunk_size = 150
-        for i in range(0, len(to_process), chunk_size):
-            chunk = to_process[i : i + chunk_size]
-            self._query_llm_chunk(chunk)
-            self.save_data()  # Save incrementally
-
-    def _query_llm_chunk(self, tx_chunk: list[dict]):
-        if not self.client:
-            return
-
-        tx_list_str = ""
-        for tx in tx_chunk:
-            tx_id = tx.get("id")
-            booking_date = tx.get("booking_date")
-            time_of_day = tx.get("time_of_day", "")
-            amount = tx.get("amount")
-            currency = tx.get("currency", "")
-            counterparty = tx.get("counterparty") or "Unknown"
-            account_id = tx.get("account_id", "")
-
-            parts = [
-                f"ID: {tx_id}",
-                f"Date: {booking_date}",
-                f"Time: {time_of_day}",
-                f"Amt: {amount} {currency}",
-                f"Acct: {account_id}",
-                f"Party: {counterparty}",
-            ]
-
-            if remittance := tx.get("remittance"):
-                parts.append(f"Remit: {remittance}")
-
-            if tx_type := tx.get("tx_type"):
-                parts.append(f"Type: {tx_type}")
-
-            if f_curr := tx.get("foreign_currency"):
-                parts.append(f"F.Curr: {f_curr}")
-
-            if cp_acc := tx.get("counterparty_account"):
-                parts.append(f"CP Acc: {cp_acc}")
-
-            if card := tx.get("card_last4"):
-                parts.append(f"Card: {card}")
-
-            if unmapped := tx.get("unmapped"):
-                if unmapped != "{}":
-                    parts.append(f"Extra: {unmapped}")
-
-            tx_list_str += " | ".join(parts) + "\n"
-
-        categories_str = "\n".join(self.categories)
-
-        custom_instructions = ""
-        instr_path = os.path.join(self.data_dir, "ai_instructions.md")
-        if os.path.exists(instr_path):
-            with open(instr_path) as f:
-                custom_instructions = f"\nUSER-SPECIFIC HEURISTICS:\n{f.read()}\n"
-
-        prompt = f"""
-You are an expert financial data analyst.
-Your task is to categorize the following transactions and identify a "Clean Name"
-(merchant or entity name).
-
-UNIVERSAL GUIDELINES:
-1. **Clean Name**: Extract the specific entity or merchant name (e.g., "Uber" from "Uber *Trip ..."). 
-   - Remove location codes, dates, and random identifiers.
-2. **Category**: Choose the BEST fit from the provided list.
-   - Use "Amt" to distinguish subscriptions (fixed/round #s) vs regular spending.
-   - Use "Extra" JSON data if standard fields are ambiguous.
-   - If no category fits well, use "Uncategorized".
-   - **Explain your choice** in the 'category_reason' field (short note).
-3. **Suggestions**: If you believe a NEW category is strictly necessary:
-   - Provide it in the 'suggested_category' field.
-   - Explain WHY in the 'suggestion_reason' field.
-   - Still pick the best existing match (or "Uncategorized") for the 'category' field.
-
-{custom_instructions}
-
-CATEGORIES TO CHOOSE FROM:
-{categories_str}
-
-TRANSACTIONS TO PROCESS:
-{tx_list_str}
-"""
-
-        try:
-            response = self.client.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=prompt,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": CategorizationResponse,
-                },
-            )
-
-            result = cast(CategorizationResponse | None, response.parsed)
-
-            if not result or not result.transactions:
-                logging.error("Empty or invalid response from LLM")
-                return
-
-            for item in result.transactions:
-                if item.suggested_category:
-                    logging.info(
-                        f"LLM suggested new category '{item.suggested_category}' "
-                        f"for {item.id}. Reason: {item.suggestion_reason}"
-                    )
-
-                self.llm_cache[item.id] = {
-                    "clean_name": item.clean_name,
-                    "category": item.category,
-                    "category_reason": item.category_reason,
-                    "confidence": 0.8,  # arbitrary confidence for LLM
-                    "suggested_category": item.suggested_category,
-                    "suggestion_reason": item.suggestion_reason,
-                }
-
-        except Exception as e:
-            logging.error(f"Error querying LLM: {e}")

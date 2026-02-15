@@ -5,7 +5,6 @@ description = "Personal finance tracker using Open Banking APIs and AI-powered t
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "google-genai",
     "ipython",
     "itables",
     "jupytext",

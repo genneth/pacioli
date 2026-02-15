@@ -1,7 +1,7 @@
 # Pacioli Project Context
 
 ## Overview
-**Pacioli** is a personal finance tracking application named after Luca Pacioli, the father of accounting. It leverages Open Banking APIs (via GoCardless) to fetch transaction data and uses a hybrid approach (Regex + LLM) to categorize spending.
+**Pacioli** is a personal finance tracking application named after Luca Pacioli, the father of accounting. It leverages Open Banking APIs (via GoCardless) to fetch transaction data and uses a hybrid approach (Regex + Agentic AI) to categorize spending.
 
 The core philosophy is **immutable raw data** combined with **derived state**. The raw JSON responses from the bank are stored permanently, and all categorization and analysis are computed on top of this ground truth.
 
@@ -24,7 +24,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
         1.  **Manual Overrides** (`data/manual_assignments.json`)
         2.  **Zero Amount Checks** (Ignored/Excluded)
         3.  **Regex Patterns** (`data/patterns.json`)
-        4.  **LLM Classification** (`data/llm_cache.json` via Gemini)
+        4.  **Agent/AI Classification** (`data/llm_cache.json`)
     *   Outputs a flat **Polars DataFrame**.
 
 ## Data Schema & Constraints
@@ -59,8 +59,8 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
     ```
 
 ### `data/llm_cache.json`
-- **Format**: A dictionary caching Gemini's responses to avoid redundant API calls.
-- **Integrity**: Entries can be pruned using the `ops` skill if they become redundant or incorrect.
+- **Format**: A dictionary caching classification results to avoid redundant research.
+- **Integrity**: Entries can be updated by the agent using the `ops` skill. Mark decisions with `source: "AI_AGENT"`.
 
 ## Privacy & Security Guardrails
 
@@ -77,6 +77,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 
 ### 3. Standing Orders for AI Agents
 *   **Custom Heuristics**: Always consult `data/ai_instructions.md` for project-specific naming philosophies, meal timing, and personal schedule context before performing enrichment or labeling.
+*   **Grounded Categorization**: Before labeling a transaction, search for existing "Gold Standard" rules (Patterns/Manual Assignments) using `grounding_search.py` to ensure consistency.
 *   **Grep, Don't Read**: When inspecting large files in Level 2 directories, always use `search_file_content` with specific patterns rather than `read_file` to minimize exposure of irrelevant PII.
 *   **Scrub Before Commit**: If you are asked to create a new test or documentation example, **generate fake data**. Never copy-paste a real transaction ID or counterparty string into a tracked file.
 *   **Anonymization**: If you see a real name (e.g., "SMITH") or an account number in a string you are processing, replace it with a placeholder like `[USER]` or `[ACCOUNT_ID]` if that string is intended for a non-ignored file.
@@ -104,18 +105,20 @@ Instead, use Windows command-line tools or targeted tool calls to inspect subset
 
 ## Key Files
 *   **`update_transactions.py`**: The primary script to sync with the bank. Safe to run repeatedly.
-*   **`transaction_manager.py`**: Contains the `TransactionManager` class which handles the business logic for categorization and LLM interaction.
-*   **`go_cardless_client.py`**: A custom wrapper around the GoCardless Bank Account Data API (formerly Nordigen). Handles token management (`token.json`).
+*   **`transaction_manager.py`**: Contains the `TransactionManager` class which handles the business logic for categorization and enrichment.
+*   **`go_cardless_client.py`**: A custom wrapper around the GoCardless Bank Account Data API. Handles token management (`token.json`).
 *   **`transaction_loader.py`**: Helper module to load and deduplicate raw data.
+*   **`find_uncategorized.py`**: Identifies gaps in categorization for the agent to resolve.
+*   **`grounding_search.py`**: Searches gold-standard data for context.
+*   **`update_llm_cache.py`**: Records agent-led decisions into the cache.
 
 ## Transaction Manager Actions
 The `TransactionManager` class in `transaction_manager.py` provides the following core actions:
 
-*   **`enrich_transactions(transactions)`**: The primary pipeline. Takes a list of raw transactions and returns a categorized Polars DataFrame, applying the hierarchy (Manual > Transfer > Zero > Pattern > AI).
-*   **`batch_process_llm(transactions)`**: Identifies transactions that haven't been categorized by other means and sends them to Gemini for AI classification. Updates the local `llm_cache.json`.
+*   **`enrich_transactions(transactions)`**: The primary pipeline. Takes a list of raw transactions and returns a categorized Polars DataFrame, applying the hierarchy (Manual > Transfer > Zero > Pattern > AI/Agent).
 *   **`detect_transfers(transactions)`**: Scans for matching transaction pairs (opposite amounts, nearby dates, user name in description) and marks them as "Internal Transfers".
 *   **`test_pattern(transactions, pattern, field)`**: Dry-run a regex pattern against a set of transactions to see what it would match before saving it.
-*   **`purge_override_cache(transactions)`**: Optimizes storage by removing LLM cache entries for transactions that are now covered by more deterministic rules (Manual, Pattern, etc.).
+*   **`purge_override_cache(transactions)`**: Optimizes storage by removing cache entries for transactions that are now covered by more deterministic rules (Manual, Pattern, etc.).
 *   **`explain_transaction(tx)`**: Provides a detailed diagnostic trace of how a specific transaction would be resolved, showing all matching rules and the final selection.
 
 ## Setup & Usage
@@ -124,13 +127,12 @@ The `TransactionManager` class in `transaction_manager.py` provides the followin
 *   Python 3.13+
 *   `uv` (Universal Python Package Installer)
 *   GoCardless Account (Bank Account Data API)
-*   Google API Key (Gemini)
 
 ### Environment Variables (`.env`)
 ```toml
 GOCARDLESS_SECRET_ID = "..."
 GOCARDLESS_SECRET_KEY = "..."
-GOOGLE_API_KEY = "..."
+TRANSFER_NAME = "..." # Your name as it appears in bank transfers (e.g. "SMITH")
 ```
 
 ### Common Commands
@@ -140,13 +142,17 @@ All commands should be run using `uv` to ensure the correct environment and depe
     ```bash
     uv run update_transactions.py
     ```
+*   **Enrich Transactions:**
+    ```bash
+    uv run enrich_transactions.py
+    ```
 *   **Visualize Spending:**
     ```bash
     uv run generate_spending_viz.py
     ```
 *   **Run Tests:**
     ```bash
-    uv run pytest
+    uv run python -m pytest
     ```
 *   **Linting & Formatting:**
     ```bash
@@ -179,12 +185,5 @@ The project includes a specialized `ops` skill for managing the transaction pipe
 **Core Workflows:**
 1.  **Sync Transactions:** `uv run update_transactions.py` - Fetches new data from GoCardless.
 2.  **Enrich Transactions:** `uv run enrich_transactions.py` - Loads, deduplicates, and categorizes transactions.
-    - Uses `tqdm` for progress monitoring.
-    - Outputs a summary of categorization sources (`PATTERN`, `AI_CACHED`, `TRANSFER`, etc.).
-    - **Follow-up:** If all transactions are categorized (`[SUCCESS]`), run `uv run generate_spending_viz.py`.
-    - **Resolution:** If transactions are missing categories (`[ALERT]`), proceed to **Uncategorized Decision Tree**.
-3.  **Prune LLM Cache:** `uv run prune_cache.py <tx_id> ...` - Removes specific transactions from `llm_cache.json` to force re-evaluation.
-
-**Key Categories:**
-- `Transfers > Matched`: Internal transfers identified by matching amounts, dates, and names.
-- `Transfers > Internal`: (Legacy/Alternative)
+3.  **Agent-Led Categorization:** The agent identifies gaps using `find_uncategorized.py` and resolves them using `update_llm_cache.py` after grounding research.
+4.  **Prune Cache:** `uv run prune_cache.py <tx_id> ...` - Removes specific entries to force re-evaluation.
