@@ -30,6 +30,9 @@ def main():
         print("All transactions are already categorized.")
         return
 
+    # Sort chronologically
+    df_missing = df_missing.sort("booking_date")
+
     if args.summary:
         # Group by counterparty/remittance to show the agent the 'big wins'
         summary = (

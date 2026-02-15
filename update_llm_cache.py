@@ -23,7 +23,7 @@ def main():
         if not os.path.exists(args.batch):
             logging.error(f"Batch file {args.batch} not found.")
             return
-        with open(args.batch) as f:
+        with open(args.batch, encoding="utf-8") as f:
             decisions = json.load(f)
     elif args.id and args.name and args.category and args.reason:
         decisions = [{
