@@ -31,4 +31,4 @@ Ask for a **"Daily Pass"** to run the full pipeline:
 - **"Automate [Merchant Name]"**: I will suggest a regex pattern for a recurring merchant.
 - **"Audit my patterns"**: Finds overlaps or dead rules.
 - **"Cleanup the cache"**: Removes redundant labels.
-- **"Search the gold standard for [keyword]"**: Checks existing patterns and manual assignments.
+- **"Search the gold standard"**: I will check existing patterns and manual assignments for keywords.

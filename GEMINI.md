@@ -77,7 +77,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 
 ### 3. Standing Orders for AI Agents
 *   **Custom Heuristics**: Always consult `data/ai_instructions.md` for project-specific naming philosophies, meal timing, and personal schedule context before performing enrichment or labeling.
-*   **Grounded Categorization**: Before labeling a transaction, search for existing "Gold Standard" rules (Patterns/Manual Assignments) using `grounding_search.py` to ensure consistency.
+*   **Grounded Categorization**: Before labeling a transaction, directly read `data/patterns.json` and `data/manual_assignments.json` to ensure consistency with existing rules.
 *   **Grep, Don't Read**: When inspecting large files in Level 2 directories, always use `search_file_content` with specific patterns rather than `read_file` to minimize exposure of irrelevant PII.
 *   **Scrub Before Commit**: If you are asked to create a new test or documentation example, **generate fake data**. Never copy-paste a real transaction ID or counterparty string into a tracked file.
 *   **Anonymization**: If you see a real name (e.g., "SMITH") or an account number in a string you are processing, replace it with a placeholder like `[USER]` or `[ACCOUNT_ID]` if that string is intended for a non-ignored file.
@@ -109,7 +109,6 @@ Instead, use Windows command-line tools or targeted tool calls to inspect subset
 *   **`go_cardless_client.py`**: A custom wrapper around the GoCardless Bank Account Data API. Handles token management (`token.json`).
 *   **`transaction_loader.py`**: Helper module to load and deduplicate raw data.
 *   **`find_uncategorized.py`**: Identifies gaps in categorization for the agent to resolve.
-*   **`grounding_search.py`**: Searches gold-standard data for context.
 *   **`update_llm_cache.py`**: Records agent-led decisions into the cache.
 
 ## Transaction Manager Actions
