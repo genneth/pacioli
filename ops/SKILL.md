@@ -1,5 +1,7 @@
-name:ops
+---
+name: ops
 description: Personal finance operations for Pacioli. Use this skill to sync transactions from bank APIs, manage the categorization cache, and ground decisions in established rules.
+---
 
 # Ops
 
@@ -18,7 +20,7 @@ Loads raw transactions and applies the hierarchy: Manual > Transfer > Zero > Pat
 - **Output:** `enriched_transactions.csv`.
 
 ### 3. Agent-Led Categorization
-The primary workflow for resolving "Uncategorized" transactions.
+The primary workflow for resolving "Uncategorized" transactions. Favor the **AI Cache** for new or infrequent merchants.
 1. **Find**: `uv run find_uncategorized.py --limit 50`
    - **Chronological Order**: Always process transactions chronologically. This is vital for "Forensics"—recognizing that a series of small spends in a specific city (e.g., Bled, Paris) indicates a trip.
    - **Batching**: 50 transactions is the sweet spot. It provides enough context for trip grouping without overloading reasoning.
@@ -35,8 +37,8 @@ The primary workflow for resolving "Uncategorized" transactions.
    - **Tidy Up**: Delete the temporary batch JSON file immediately after a successful `update_llm_cache.py` run to keep the workspace clean.
 
 ### 4. Promotion to Gold Standard
-Move recurring "AI Agent" classifications to "Gold Standard" (Patterns) to reduce future workload and API costs.
-1. **Identify**: If a merchant appears more than 2-3 times in a batch, propose a **Regex Pattern** immediately instead of just caching it.
+Move high-frequency "AI Agent" classifications to "Gold Standard" (Patterns). **Promotion to patterns should be conservative and only happen after several repeat occurrences.**
+1. **Identify**: Only propose a **Regex Pattern** if a merchant has appeared **at least 5 times** in the dataset or is clearly a high-frequency monthly subscription. For everything else, use the AI Cache.
 2. **Manual Assignment**: For unique one-off outliers (e.g., a specific property fee). Edit `data/manual_assignments.json`.
 3. **Pattern Creation**: 
     - Test: `uv run test_pattern.py "regex"`
