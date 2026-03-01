@@ -26,7 +26,8 @@ spending_viz.html
 .ruff_cache/
 
 # gemini local settings and caches
-.gemini/
+.gemini/*
+!.gemini/policies/
 
 # vscode settings
 .vscode/

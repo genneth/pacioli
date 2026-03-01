@@ -1,0 +1,14 @@
+﻿[[rule]]
+toolName = "run_shell_command"
+decision = "allow"
+priority = 100
+commandPrefix = [
+  "uv run update_transactions.py",
+  "uv run enrich_transactions.py",
+  "uv run generate_spending_viz.py",
+  "uv run list_categories.py",
+  "uv run lint_patterns.py",
+  "uv run python check_pii.py",
+  "uv run identify_candidates.py",
+  "uv run find_uncategorized.py"
+]

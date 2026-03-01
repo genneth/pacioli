@@ -57,6 +57,11 @@ The system only accepts categories existing as keys in `data/patterns.json`.
 - **Lint**: `uv run lint_patterns.py` (Dead/overlapping patterns).
 - **PII Check**: `uv run python check_pii.py`.
 
+## Error Handling & Reporting
+- **Explicit Failure Highlighting**: If a command (especially `update_transactions.py`) encounters an error (e.g., a 503 from a bank API, network timeout, or invalid token), **you must explicitly report this to the user**.
+- **Partial Success**: If an operation partially succeeds (e.g., 1 out of 2 accounts syncs), you should continue with the downstream pipeline (enrichment/categorization) using the available data. However, your final summary must clearly state which accounts failed, why they failed (e.g., "Barclays API under maintenance"), and the implication ("Barclays data is stale as of [Date]").
+- **Do Not Silently Recover**: Never gloss over `ERROR` or `WARNING` logs in the terminal output.
+
 ## Combined Workflows (Chains)
 
 ### A. The "Daily Pass"
