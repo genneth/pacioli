@@ -33,6 +33,7 @@ The primary workflow for resolving "Uncategorized" transactions. Favor the **AI 
 4. **Research**: Use web search if the merchant is entirely unknown.
 5. **Batch Persist**: 
    - Use `update_llm_cache.py --batch <file>`.
+   - **Format**: The batch JSON file MUST be a JSON array of objects (e.g., `[{"id": "...", "name": "...", "category": "...", "reason": "..."}]`), not a dictionary.
    - **Safety**: Ensure batch JSON files are saved and read using **UTF-8** encoding to support special characters in merchant names (e.g., "Brasserie Zédel").
    - **Tidy Up**: Delete the temporary batch JSON file immediately after a successful `update_llm_cache.py` run to keep the workspace clean.
 
