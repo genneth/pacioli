@@ -153,19 +153,40 @@ Check that status is `LN` (Linked) and `accounts` is non-empty. If still `CR`
 
 ## Phase 4: First Sync
 
+`update_transactions.py` only fetches new data for accounts that **already have
+history** in `raw/`. Brand-new accounts (just linked in Phase 3) are invisible to
+it. You must bootstrap them first.
+
+### 4a. Bootstrap new accounts
+
+For each account ID discovered from the requisitions in Phase 3:
+
+1. Create the directory: `raw/<account_id>/`
+2. Fetch the initial history directly via the client:
+   ```python
+   from datetime import date, timedelta
+   yesterday = (date.today() - timedelta(days=1)).isoformat()
+   # Go back as far as the agreement allows (e.g. 730 days)
+   start = (date.today() - timedelta(days=730)).isoformat()
+   dump = client.get(f"accounts/{account_id}/transactions/",
+                     {"date_from": start, "date_to": yesterday})
+   ```
+3. Write the response to `raw/<account_id>/<yesterday>.json`
+4. Report the transaction count and date range
+
+This is a one-time step. Once the account has at least one file in `raw/`,
+`update_transactions.py` takes over for all future syncs.
+
+### 4b. Verify and enrich
+
 ```bash
 uv run update_transactions.py
-```
-
-Verify JSON files appeared in `raw/` subdirectories. Report how many transactions
-were fetched and the date range.
-
-Run initial enrichment:
-```bash
 uv run enrich_transactions.py
 ```
 
-Everything will be uncategorized at this point — that's expected. Say so.
+The first command confirms the normal sync path now works (it should be a no-op
+if the bootstrap already fetched up to yesterday). The second produces a baseline
+CSV — everything will be uncategorized at this point, which is expected.
 
 **Error handling**: If the sync fails (503, token error, etc.), report it clearly.
 If one account succeeds and another fails, continue with available data but tell
