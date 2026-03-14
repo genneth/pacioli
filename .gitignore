@@ -24,6 +24,7 @@ spending_viz.html
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.claude/
 
 # gemini local settings and caches
 .gemini/*
