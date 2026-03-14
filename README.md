@@ -1,6 +1,6 @@
 # Pacioli
 
-![Luca Pacioli](https://commons.wikimedia.org/wiki/File:Luca_Pacioli_in_the_Summa.jpg#/media/File:Luca_Pacioli_in_the_Summa.jpg)
+![Luca Pacioli](https://upload.wikimedia.org/wikipedia/commons/c/c8/Luca_Pacioli_in_the_Summa.jpg)
 
 Personal finance tracker using Open Banking (GoCardless) and agentic classification.
 
