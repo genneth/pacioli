@@ -6,18 +6,20 @@ Personal finance tracker using Open Banking (GoCardless) and agentic classificat
 
 ## Setup
 
-1. **Environment Variables (`.env`)**:
-   ```toml
-   GOCARDLESS_SECRET_ID = "..."
-   GOCARDLESS_SECRET_KEY = "..."
-   TRANSFER_NAME = "..." # Your name as it appears in bank transfers (e.g. "SMITH")
-   ```
+Ask the agent to run the **onboarding** skill. It will walk you through:
 
-2. **TODO**: Ask me (the agent) for help setting up the **GoCardless authorization** and **Open Banking links**. This is a one-off act required before the sync will work.
+1. Installing dependencies (`uv sync`)
+2. Creating `.env` with GoCardless API credentials and your transfer name
+3. Linking your bank accounts via GoCardless Open Banking
+4. Fetching your first batch of transactions
+5. Discovering spending categories from your real data
+6. Building personal labelling heuristics (`data/ai_instructions.md`)
 
-## User Guide (Gemini CLI)
+The onboarding skill is idempotent — safe to restart if interrupted.
 
-The project is managed via the **Gemini CLI** using the `ops` skill.
+## User Guide
+
+The project is managed via an AI agent (Gemini CLI or Claude Code) using the `ops` skill.
 
 ### The "Daily Pass" (Primary Workflow)
 Ask for a **"Daily Pass"** to run the full pipeline:
