@@ -205,11 +205,11 @@ class TransactionManager:
 
         if tx.id in self.llm_cache:
             cached = self.llm_cache[tx.id]
-            matches["AI_CACHED"] = {
+            matches["AI_AGENT"] = {
                 "clean_name": cached.get("clean_name"),
                 "category": cached.get("category"),
                 "category_reason": cached.get("category_reason"),
-                "source": cached.get("source", "AI_CACHED"),
+                "source": cached.get("source", "AI_AGENT"),
                 "confidence": cached.get("confidence", 0.7),
                 "suggested_category": cached.get("suggested_category"),
                 "suggestion_reason": cached.get("suggestion_reason"),
@@ -262,28 +262,28 @@ class TransactionManager:
                     f"Transaction {tx.id}: Manual assignment overrides Pattern match "
                     f"'{matches['PATTERN'].get('pattern_matched')}'"
                 )
-            if "AI_CACHED" in matches:
+            if "AI_AGENT" in matches:
                 logging.info(
                     f"Transaction {tx.id}: Manual assignment overrides AI Cache"
                 )
 
         elif "TRANSFER" in matches:
             final_result = matches["TRANSFER"]
-            if "AI_CACHED" in matches:
+            if "AI_AGENT" in matches:
                 logging.info(f"Transaction {tx.id}: Transfer match overrides AI Cache")
 
         elif "ZERO_AMOUNT" in matches:
             final_result = matches["ZERO_AMOUNT"]
-            if "AI_CACHED" in matches:
+            if "AI_AGENT" in matches:
                 logging.info(f"Transaction {tx.id}: Zero Amount overrides AI Cache")
 
         elif "PATTERN" in matches:
             final_result = matches["PATTERN"]
-            if "AI_CACHED" in matches:
+            if "AI_AGENT" in matches:
                 logging.info(f"Transaction {tx.id}: Pattern match overrides AI Cache")
 
-        elif "AI_CACHED" in matches:
-            final_result = matches["AI_CACHED"]
+        elif "AI_AGENT" in matches:
+            final_result = matches["AI_AGENT"]
 
         # pattern_matched is only used for overlap warnings, not returned to callers
         if "pattern_matched" in final_result:

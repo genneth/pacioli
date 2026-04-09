@@ -55,8 +55,8 @@ def main():
         template="plotly_white",
     )
 
-    # Add scatter points for AI_CACHED transactions
-    ai_only = ts_category_details.filter(C.source == "AI_CACHED")
+    # Add scatter points for AI_AGENT transactions
+    ai_only = ts_category_details.filter(C.source == "AI_AGENT")
     if not ai_only.is_empty():
         ai_scatter = px.scatter(
             ai_only,

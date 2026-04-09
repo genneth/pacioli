@@ -184,7 +184,7 @@ def test_purge_override_cache(temp_data_dir):
     tm.llm_cache[tx_id] = {
         "clean_name": "Cached Name",
         "category": "Cached Category",
-        "source": "AI_CACHED",
+        "source": "AI_AGENT",
         "confidence": 0.8,
     }
     tm.save_data()

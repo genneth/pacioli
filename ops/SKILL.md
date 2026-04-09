@@ -88,8 +88,11 @@ For each transaction, follow this resolution order:
    differ (e.g., the original was wrong).
 3. **Context clues** — use surrounding transactions, time of day, amount, and
    the heuristics from `data/ai_instructions.md` to classify.
-4. **Web search** — if the merchant name is opaque (e.g., "SUMUP *XYZ123"),
-   search the web to identify the actual business.
+4. **External Verification** — Use `google_web_search` or `browser_agent` (Google
+   Maps) to identify the business or confirm its nature (e.g., "Is X a sit-down
+   restaurant or a takeaway?"). **Perform this check whenever internal clues
+   (Gmail, Calendar, or location context) are insufficient to reach high
+   confidence.**
 
 ### 4. Choose the right destination
 

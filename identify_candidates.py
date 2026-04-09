@@ -32,7 +32,7 @@ def main():
     df = tm.enrich_transactions(rows)
 
     # 2. Filter for AI-categorized only
-    df_ai = df.filter(C.source == "AI_CACHED")
+    df_ai = df.filter(C.source == "AI_AGENT")
     
     if args.category:
         df_ai = df_ai.filter(C.category.str.starts_with(args.category))

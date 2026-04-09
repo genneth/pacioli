@@ -21,7 +21,7 @@ def main():
     if args.force:
         # Include things that are null OR were categorized by AI/Agent
         df_missing = df_enriched.filter(
-            C.source.is_null() | C.source.is_in(["AI_CACHED", "AI_AGENT"])
+            C.source.is_null() | (C.source == "AI_AGENT")
         )
     else:
         df_missing = df_enriched.filter(C.source.is_null())
