@@ -76,7 +76,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
   - Never rely on "fallback" behavior where a less-specific pattern is intended to catch misses from a more-specific one without explicit exclusion criteria in the broad pattern.
 
 ### 3. Standing Orders for AI Agents
-*   **Custom Heuristics**: Always consult `data/ai_instructions.md` for project-specific naming philosophies, meal timing, and personal schedule context before performing enrichment or labeling.
+*   **Custom Heuristics**: Always consult @data/ai_instructions.md for project-specific naming philosophies, meal timing, and personal schedule context before performing enrichment or labeling.
 *   **Grounded Categorization**: Before labeling a transaction, directly read `data/patterns.json` and `data/manual_assignments.json` to ensure consistency with existing rules.
 *   **Grep, Don't Read**: When inspecting large files in Level 2 directories, always use `search_file_content` with specific patterns rather than `read_file` to minimize exposure of irrelevant PII.
 *   **Scrub Before Commit**: If you are asked to create a new test or documentation example, **generate fake data**. Never copy-paste a real transaction ID or counterparty string into a tracked file.
