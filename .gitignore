@@ -32,3 +32,7 @@ spending_viz.html
 
 # vscode settings
 .vscode/
+
+# agent runtime files
+.agents/
+downloads/
