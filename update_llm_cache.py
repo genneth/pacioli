@@ -3,6 +3,7 @@ import json
 import logging
 import os
 
+from cli_common import setup_logging
 from transaction_manager import TransactionManager
 
 
@@ -15,7 +16,7 @@ def main():
     parser.add_argument("--reason", help="Reason for categorization")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    setup_logging(logging.INFO)
     tm = TransactionManager()
 
     decisions = []

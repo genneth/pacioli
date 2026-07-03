@@ -4,16 +4,80 @@ import os
 import re
 from dataclasses import asdict
 from datetime import time
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 from dotenv import load_dotenv
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from transaction_loader import Transaction
 
 load_dotenv()
 
 DATA_DIR = "data"
+
+# The resolution hierarchy, highest priority first. Cheap deterministic rules always
+# win over expensive probabilistic ones. This tuple is the single source of truth:
+# resolve_transaction, get_priority_source, and purge_override_cache all derive
+# their ordering from it.
+SOURCE_PRIORITY = ("MANUAL", "TRANSFER", "ZERO_AMOUNT", "PATTERN", "AI_AGENT")
+
+
+class PatternRule(BaseModel):
+    """Schema gate for patterns.json entries.
+
+    A malformed entry is dangerous: a missing/empty "pattern" key would regex-match
+    every transaction, and cleanup_cache.py would then purge the whole AI cache.
+    Validation happens at load time only; the original dicts are kept untouched so
+    the JSON file round-trips byte-identically.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    pattern: str
+    clean_name: str | None = None
+    field: Literal["counterparty", "remittance", "any"] = "counterparty"
+    min_amount: float | None = None
+    max_amount: float | None = None
+    min_day: int | None = None
+    max_day: int | None = None
+    min_time: str | None = None
+    max_time: str | None = None
+
+    @field_validator("pattern")
+    @classmethod
+    def _pattern_is_nonempty_and_compiles(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("pattern must be a non-empty regex")
+        try:
+            re.compile(v)
+        except re.error as e:
+            raise ValueError(f"pattern is not a valid regex: {e}") from e
+        return v
+
+    @field_validator("min_time", "max_time")
+    @classmethod
+    def _time_is_parseable(cls, v: str | None) -> str | None:
+        if v is not None:
+            time.fromisoformat(v)
+        return v
+
+
+def _dump_json_atomic(path: str, obj: Any) -> None:
+    """Write JSON via a temp file + rename so a crash can't truncate the target.
+
+    These files hold months of hand-curated labelling with no other backup, so a
+    partial write must never replace a good copy.
+    """
+    tmp_path = f"{path}.tmp"
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(obj, f, indent=2)
+        os.replace(tmp_path, path)
+    except BaseException:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
 
 
 class TransactionManager:
@@ -30,6 +94,7 @@ class TransactionManager:
         self.categories: list[str] = []
         self.llm_cache: dict[str, dict[str, Any]] = {}
         self.transfer_map: dict[str, dict[str, Any]] = {}
+        self._transfers_detected = False
 
         self.load_data()
 
@@ -47,11 +112,17 @@ class TransactionManager:
                     self.patterns = []
                     for category, patterns in data.items():
                         for p in patterns:
+                            self._validate_pattern(p, category)
                             p_copy = p.copy()
                             p_copy["category"] = category
                             self.patterns.append(p_copy)
                 else:
                     # Legacy flat list format (will be migrated on next save)
+                    for p in data:
+                        category = p.get("category", "Uncategorized")
+                        self._validate_pattern(
+                            {k: v for k, v in p.items() if k != "category"}, category
+                        )
                     self.patterns = data
                     self.categories = sorted(
                         list(set(p.get("category", "Uncategorized") for p in data))
@@ -60,17 +131,28 @@ class TransactionManager:
         if os.path.exists(self.cache_file):
             with open(self.cache_file) as f:
                 self.llm_cache = json.load(f)
+            for tx_id, entry in self.llm_cache.items():
+                if not isinstance(entry, dict):
+                    raise ValueError(
+                        f"Invalid llm_cache entry for '{tx_id}': expected an object, "
+                        f"got {type(entry).__name__}"
+                    )
+
+    @staticmethod
+    def _validate_pattern(p: dict[str, Any], category: str) -> None:
+        try:
+            PatternRule.model_validate(p)
+        except ValidationError as e:
+            raise ValueError(
+                f"Invalid pattern in category '{category}' "
+                f"(clean_name={p.get('clean_name')!r}): {e}"
+            ) from e
 
     def save_data(self):
         os.makedirs(self.data_dir, exist_ok=True)
-        with open(self.manual_assignments_file, "w") as f:
-            json.dump(self.manual_assignments, f, indent=2)
-
-        with open(self.patterns_file, "w") as f:
-            json.dump(self._regroup_patterns(), f, indent=2)
-
-        with open(self.cache_file, "w") as f:
-            json.dump(self.llm_cache, f, indent=2)
+        _dump_json_atomic(self.manual_assignments_file, self.manual_assignments)
+        _dump_json_atomic(self.patterns_file, self._regroup_patterns())
+        _dump_json_atomic(self.cache_file, self.llm_cache)
 
     def _regroup_patterns(self) -> dict[str, list[dict[str, Any]]]:
         """Convert flat internal pattern list back to grouped-by-category format for JSON.
@@ -97,6 +179,7 @@ class TransactionManager:
         user's name (TRANSFER_NAME env var) in the description.
         """
         self.transfer_map = {}
+        self._transfers_detected = True
 
         # Index by amount so we can find opposite-amount candidates in O(1)
         amount_map: dict[float, list[Transaction]] = {}
@@ -162,6 +245,15 @@ class TransactionManager:
         if not tx.id:
             return {}
 
+        # Transfer matching depends on state that only detect_transfers() builds;
+        # resolving without it silently labels transfers as ordinary spending.
+        if not self._transfers_detected:
+            logging.warning(
+                "Resolving transactions without detect_transfers() having run — "
+                "inter-account transfers will not be recognized."
+            )
+            self._transfers_detected = True  # warn once per manager, not per tx
+
         matches: dict[str, Any] = {}
 
         if tx.id in self.manual_assignments:
@@ -220,7 +312,9 @@ class TransactionManager:
     def get_priority_source(self, tx: Transaction) -> str | None:
         """Return the highest-priority non-pattern source, or None if patterns would apply."""
         matches = self._find_matches(tx)
-        for source in ("MANUAL", "TRANSFER", "ZERO_AMOUNT"):
+        for source in SOURCE_PRIORITY:
+            if source == "PATTERN":
+                return None
             if source in matches:
                 return source
         return None
@@ -255,35 +349,18 @@ class TransactionManager:
             "confidence": 0.0,
         }
 
-        if "MANUAL" in matches:
-            final_result = matches["MANUAL"]
-            if "PATTERN" in matches:
-                logging.info(
-                    f"Transaction {tx.id}: Manual assignment overrides Pattern match "
-                    f"'{matches['PATTERN'].get('pattern_matched')}'"
-                )
-            if "AI_AGENT" in matches:
-                logging.info(
-                    f"Transaction {tx.id}: Manual assignment overrides AI Cache"
-                )
-
-        elif "TRANSFER" in matches:
-            final_result = matches["TRANSFER"]
-            if "AI_AGENT" in matches:
-                logging.info(f"Transaction {tx.id}: Transfer match overrides AI Cache")
-
-        elif "ZERO_AMOUNT" in matches:
-            final_result = matches["ZERO_AMOUNT"]
-            if "AI_AGENT" in matches:
-                logging.info(f"Transaction {tx.id}: Zero Amount overrides AI Cache")
-
-        elif "PATTERN" in matches:
-            final_result = matches["PATTERN"]
-            if "AI_AGENT" in matches:
-                logging.info(f"Transaction {tx.id}: Pattern match overrides AI Cache")
-
-        elif "AI_AGENT" in matches:
-            final_result = matches["AI_AGENT"]
+        for i, source in enumerate(SOURCE_PRIORITY):
+            if source not in matches:
+                continue
+            final_result = matches[source]
+            # Surface shadowed lower-priority matches so redundant cache entries
+            # (and overlapping rules) can be cleaned up.
+            for shadowed in SOURCE_PRIORITY[i + 1 :]:
+                if shadowed in matches:
+                    logging.info(
+                        f"Transaction {tx.id}: {source} overrides {shadowed}"
+                    )
+            break
 
         # pattern_matched is only used for overlap warnings, not returned to callers
         if "pattern_matched" in final_result:
@@ -291,11 +368,10 @@ class TransactionManager:
 
         # Catch typos or stale categories from LLM/manual assignments
         category = final_result.get("category")
-        source = final_result.get("source")
         if category and category not in self.categories and category != "Uncategorized":
             logging.warning(
                 f"Transaction {tx.id} resolved to unknown category "
-                f"'{category}' from {source}"
+                f"'{category}' from {final_result.get('source')}"
             )
 
         return final_result
@@ -412,7 +488,7 @@ class TransactionManager:
                 source = resolution.get("source")
 
                 # If it resolves to something definitive that overrides cache
-                if source in ["MANUAL", "PATTERN", "TRANSFER", "ZERO_AMOUNT"]:
+                if source in SOURCE_PRIORITY and source != "AI_AGENT":
                     del self.llm_cache[tx.id]
                     count += 1
 

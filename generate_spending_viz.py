@@ -2,10 +2,12 @@ import plotly.express as px
 import polars as pl
 from polars import col as C
 
+from cli_common import ENRICHED_CSV
+
 
 def main():
     # Load data
-    df = pl.read_csv("enriched_transactions.csv", infer_schema_length=None)
+    df = pl.read_csv(ENRICHED_CSV, infer_schema_length=None)
 
     # Create timestamp from booking_date and time_of_day
     df = df.with_columns(

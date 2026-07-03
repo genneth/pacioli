@@ -4,32 +4,24 @@ from dataclasses import asdict
 import polars as pl
 from polars import col as C
 
-from transaction_loader import load_transactions
-from transaction_manager import TransactionManager
+from cli_common import ALL_TRANSACTIONS_CSV, ENRICHED_CSV, load_enriched, setup_logging
 
 
 def main():
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)8s %(message)s"
-    )
+    setup_logging()
 
-    # 1. Load Transactions
+    # 1. Load and enrich
     logging.info("Loading transactions from raw files...")
-    rows = load_transactions()
+    rows, tm, df_enriched = load_enriched()
 
     # Stash a copy of raw transactions
     df_raw = pl.DataFrame([asdict(r) for r in rows])
-    df_raw.write_csv("all_transactions.csv")
-    logging.info(f"Saved {len(rows)} raw transactions to all_transactions.csv")
+    df_raw.write_csv(ALL_TRANSACTIONS_CSV)
+    logging.info(f"Saved {len(rows)} raw transactions to {ALL_TRANSACTIONS_CSV}")
 
-    # 2. Enrich Transactions
-    logging.info("Enriching transactions...")
-    tm = TransactionManager()
-    df_enriched = tm.enrich_transactions(rows)
-
-    # 3. Save Enriched Data
-    df_enriched.write_csv("enriched_transactions.csv")
-    logging.info("Saved enriched transactions to enriched_transactions.csv")
+    # 2. Save Enriched Data
+    df_enriched.write_csv(ENRICHED_CSV)
+    logging.info(f"Saved enriched transactions to {ENRICHED_CSV}")
 
     # 4. Summarize
     summary = df_enriched.group_by(C.source).len().sort("len", descending=True)

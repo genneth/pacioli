@@ -3,8 +3,7 @@ import logging
 import polars as pl
 from polars import col as C
 
-from transaction_loader import load_transactions
-from transaction_manager import TransactionManager
+from cli_common import load_enriched, setup_logging
 
 
 def main():
@@ -24,12 +23,10 @@ def main():
     )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.WARNING)
-    
+    setup_logging(logging.WARNING)
+
     # 1. Load and Enrich
-    rows = load_transactions()
-    tm = TransactionManager()
-    df = tm.enrich_transactions(rows)
+    _, _, df = load_enriched()
 
     # 2. Filter for AI-categorized only
     df_ai = df.filter(C.source == "AI_AGENT")

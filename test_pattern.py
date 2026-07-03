@@ -1,6 +1,7 @@
 import argparse
 import logging
 
+from cli_common import setup_logging
 from transaction_loader import load_transactions
 from transaction_manager import TransactionManager
 
@@ -25,7 +26,7 @@ def main():
     args = parser.parse_args()
 
     # Keep logging quiet to focus on output
-    logging.basicConfig(level=logging.WARNING) 
+    setup_logging(logging.WARNING)
     rows = load_transactions()
     tm = TransactionManager()
     

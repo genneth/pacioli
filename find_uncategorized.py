@@ -1,10 +1,10 @@
 import argparse
+import logging
 
 import polars as pl
 from polars import col as C
 
-from transaction_loader import load_transactions
-from transaction_manager import TransactionManager
+from cli_common import load_enriched, setup_logging
 
 
 def main():
@@ -14,10 +14,9 @@ def main():
     parser.add_argument("--force", action="store_true", help="Include transactions already in the AI cache.")
     args = parser.parse_args()
 
-    tm = TransactionManager()
-    rows = load_transactions()
-    df_enriched = tm.enrich_transactions(rows)
-    
+    setup_logging(logging.WARNING)
+    _, _, df_enriched = load_enriched()
+
     if args.force:
         # Include things that are null OR were categorized by AI/Agent
         df_missing = df_enriched.filter(
@@ -65,7 +64,10 @@ def main():
         )
         print("N | AVG | SAMPLE_ID | PARTY | REMIT | META")
         for row in summary.to_dicts():
-            print(f"{row['n']} | {row['avg']} | {row['sample_id']} | {row['counterparty']} | {row['remittance']} | {row['meta']}")
+            print(
+                f"{row['n']} | {row['avg']} | {row['sample_id']} | "
+                f"{row['counterparty']} | {row['remittance']} | {row['meta']}"
+            )
     else:
         # Concise pipe-delimited list for the agent
         # We format times to save tokens but keep full IDs for cache updates
@@ -82,8 +84,8 @@ def main():
             ]
         ).head(args.limit)
 
-        for row in output_df.iter_rows():
-            print(" | ".join(str(x) for x in row))
+        for values in output_df.iter_rows():
+            print(" | ".join(str(x) for x in values))
 
     print(f"\nTotal Gaps: {df_missing.height}")
 

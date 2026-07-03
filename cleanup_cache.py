@@ -1,14 +1,11 @@
-import logging
-
+from cli_common import setup_logging
 from transaction_loader import load_transactions
 from transaction_manager import TransactionManager
 
 
 def main():
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)8s %(message)s"
-    )
-    
+    setup_logging()
+
     # 1. Load Transactions
     rows = load_transactions()
     tm = TransactionManager()

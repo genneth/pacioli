@@ -1,6 +1,7 @@
 import logging
 from datetime import date, time
 
+import pytest
 from polars import col as C
 
 from transaction_loader import Transaction
@@ -475,3 +476,234 @@ def test_pattern_matching_with_time_filters(temp_data_dir):
     assert res_d["category"] == "Food & Drink > Dinner"
     
     assert res_n["clean_name"] is None
+
+
+# --- patterns.json validation on load ---
+
+
+def _write_patterns(tmp_path, grouped_data):
+    import json
+
+    d = tmp_path / "data"
+    d.mkdir(exist_ok=True)
+    with open(d / "patterns.json", "w") as f:
+        json.dump(grouped_data, f)
+    return str(d)
+
+
+def test_load_rejects_pattern_missing_pattern_key(tmp_path):
+    d = _write_patterns(
+        tmp_path, {"Bills > Utilities": [{"regex": "Gas", "clean_name": "Gas Co"}]}
+    )
+    with pytest.raises(ValueError, match="Bills > Utilities"):
+        TransactionManager(data_dir=d)
+
+
+def test_load_rejects_empty_pattern(tmp_path):
+    d = _write_patterns(
+        tmp_path, {"Bills > Utilities": [{"pattern": "", "clean_name": "Gas Co"}]}
+    )
+    with pytest.raises(ValueError, match="Bills > Utilities"):
+        TransactionManager(data_dir=d)
+
+
+def test_load_rejects_invalid_regex(tmp_path):
+    d = _write_patterns(
+        tmp_path, {"Bills > Utilities": [{"pattern": "(gas", "clean_name": "Gas Co"}]}
+    )
+    with pytest.raises(ValueError, match="Bills > Utilities"):
+        TransactionManager(data_dir=d)
+
+
+def test_load_rejects_unknown_field_value(tmp_path):
+    d = _write_patterns(
+        tmp_path,
+        {"Bills > Utilities": [{"pattern": "gas", "field": "Remittance"}]},
+    )
+    with pytest.raises(ValueError, match="Bills > Utilities"):
+        TransactionManager(data_dir=d)
+
+
+def test_load_rejects_non_numeric_amount_bound(tmp_path):
+    d = _write_patterns(
+        tmp_path,
+        {"Bills > Utilities": [{"pattern": "gas", "min_amount": "cheap"}]},
+    )
+    with pytest.raises(ValueError, match="Bills > Utilities"):
+        TransactionManager(data_dir=d)
+
+
+def test_load_rejects_unparseable_time_bound(tmp_path):
+    d = _write_patterns(
+        tmp_path,
+        {"Bills > Utilities": [{"pattern": "gas", "min_time": "6pm"}]},
+    )
+    with pytest.raises(ValueError, match="Bills > Utilities"):
+        TransactionManager(data_dir=d)
+
+
+def test_load_accepts_valid_patterns_with_numeric_string_bounds(tmp_path):
+    d = _write_patterns(
+        tmp_path,
+        {
+            "Bills > Utilities": [
+                {
+                    "pattern": "gas",
+                    "clean_name": "Gas Co",
+                    "field": "any",
+                    "min_amount": "5",
+                    "max_time": "23:00",
+                }
+            ]
+        },
+    )
+    tm = TransactionManager(data_dir=d)
+    assert len(tm.patterns) == 1
+
+
+def test_load_rejects_non_dict_llm_cache_entry(tmp_path):
+    import json
+
+    d = tmp_path / "data"
+    d.mkdir()
+    with open(d / "llm_cache.json", "w") as f:
+        json.dump({"tx_abc": "just a string"}, f)
+    with pytest.raises(ValueError, match="tx_abc"):
+        TransactionManager(data_dir=str(d))
+
+
+# --- save_data atomicity ---
+
+
+def test_failed_save_leaves_existing_files_intact(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.categories = ["Bills > Utilities"]
+    tm.patterns = [
+        {"pattern": "gas", "clean_name": "Gas Co", "category": "Bills > Utilities"}
+    ]
+    tm.llm_cache = {"tx1": {"clean_name": "Gas Co", "category": "Bills > Utilities"}}
+    tm.save_data()
+
+    # Sabotage: an unserializable object makes json.dump raise mid-write
+    tm.llm_cache = {"tx1": object()}  # type: ignore[dict-item]
+    with pytest.raises(TypeError):
+        tm.save_data()
+
+    # The previously saved state must survive the failed save
+    tm2 = TransactionManager(data_dir=temp_data_dir)
+    assert tm2.llm_cache == {
+        "tx1": {"clean_name": "Gas Co", "category": "Bills > Utilities"}
+    }
+    assert len(tm2.patterns) == 1
+
+
+def test_save_load_round_trip_preserves_patterns_and_empty_categories(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.categories = ["Bills > Utilities", "Food & Drink > Groceries"]
+    tm.patterns = [
+        {"pattern": "gas", "clean_name": "Gas Co", "category": "Bills > Utilities"}
+    ]
+    tm.save_data()
+
+    tm2 = TransactionManager(data_dir=temp_data_dir)
+    assert tm2.patterns == tm.patterns
+    # Empty categories must survive the round-trip (they define the master list)
+    assert tm2.categories == ["Bills > Utilities", "Food & Drink > Groceries"]
+
+
+# --- transfer-detection state + priority competition ---
+
+
+def _tx(id="tx1", account="acc1", amount=100.0, counterparty="Test Shop"):
+    return Transaction(
+        id=id,
+        account_id=account,
+        booking_date=date(2023, 1, 1),
+        time_of_day=time(12, 0),
+        amount=amount,
+        currency="GBP",
+        counterparty=counterparty,
+        remittance=None,
+        unmapped="{}",
+    )
+
+
+def test_warns_when_resolving_without_transfer_detection(temp_data_dir, caplog):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    with caplog.at_level(logging.WARNING):
+        tm.resolve_transaction(_tx())
+    assert "detect_transfers" in caplog.text
+
+
+def test_no_warning_once_transfers_detected(temp_data_dir, caplog):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.detect_transfers([])
+    with caplog.at_level(logging.WARNING):
+        tm.resolve_transaction(_tx())
+    assert "detect_transfers" not in caplog.text
+
+
+def test_manual_beats_pattern_and_cache(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.detect_transfers([])
+    tm.categories = ["A", "B", "C"]
+    tm.manual_assignments = {"tx1": {"clean_name": "M", "category": "A"}}
+    tm.patterns = [{"pattern": "Test", "clean_name": "P", "category": "B"}]
+    tm.llm_cache = {"tx1": {"clean_name": "AI", "category": "C"}}
+
+    result = tm.resolve_transaction(_tx())
+    assert result["source"] == "MANUAL"
+    assert result["category"] == "A"
+
+
+def test_transfer_beats_pattern_and_cache(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.categories = ["B", "C", "Transfers > Matched"]
+    tm.patterns = [{"pattern": "BLOGGS", "clean_name": "P", "category": "B"}]
+    tm.llm_cache = {"out": {"clean_name": "AI", "category": "C"}}
+    legs = [
+        _tx(id="out", account="acc1", amount=-50.0, counterparty="J BLOGGS"),
+        _tx(id="in", account="acc2", amount=50.0, counterparty="J BLOGGS"),
+    ]
+    import os
+
+    os.environ["TRANSFER_NAME"] = "BLOGGS"
+    tm.detect_transfers(legs)
+
+    result = tm.resolve_transaction(legs[0])
+    assert result["source"] == "TRANSFER"
+
+
+def test_zero_amount_beats_pattern_and_cache(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.detect_transfers([])
+    tm.categories = ["B", "C", "Excluded"]
+    tm.patterns = [{"pattern": "Test", "clean_name": "P", "category": "B"}]
+    tm.llm_cache = {"tx1": {"clean_name": "AI", "category": "C"}}
+
+    result = tm.resolve_transaction(_tx(amount=0.0))
+    assert result["source"] == "ZERO_AMOUNT"
+    assert result["category"] == "Excluded"
+
+
+def test_pattern_beats_cache(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.detect_transfers([])
+    tm.categories = ["B", "C"]
+    tm.patterns = [{"pattern": "Test", "clean_name": "P", "category": "B"}]
+    tm.llm_cache = {"tx1": {"clean_name": "AI", "category": "C"}}
+
+    result = tm.resolve_transaction(_tx())
+    assert result["source"] == "PATTERN"
+    assert result["category"] == "B"
+
+
+def test_cache_used_when_nothing_else_matches(temp_data_dir):
+    tm = TransactionManager(data_dir=temp_data_dir)
+    tm.detect_transfers([])
+    tm.categories = ["C"]
+    tm.llm_cache = {"tx1": {"clean_name": "AI", "category": "C"}}
+
+    result = tm.resolve_transaction(_tx())
+    assert result["source"] == "AI_AGENT"
+    assert result["category"] == "C"

@@ -65,8 +65,8 @@ class Client:
             self.save_token()
             return True
         else:
-            logging.info(
-                f"Failed to get new token: {response.status_code} {response.json()}"
+            logging.error(
+                f"Failed to get new token: {response.status_code} {response.text[:200]}"
             )
             return False
 
@@ -89,8 +89,8 @@ class Client:
         if response.status_code == 200:
             return response.json()
         else:
-            logging.info(
-                f"GET {endpoint} failed: {response.status_code} {response.json()}"
+            logging.error(
+                f"GET {endpoint} failed: {response.status_code} {response.text[:200]}"
             )
             return None
 
@@ -110,8 +110,8 @@ class Client:
         if response.status_code == 200 or response.status_code == 201:
             return response.json()
         else:
-            logging.info(
-                f"POST {endpoint} failed: {response.status_code} {response.json()}"
+            logging.error(
+                f"POST {endpoint} failed: {response.status_code} {response.text[:200]}"
             )
             return None
 
@@ -129,8 +129,8 @@ class Client:
         if response.status_code == 200:
             return response.json()
         else:
-            logging.info(
-                f"DELETE {endpoint} failed: {response.status_code} {response.json()}"
+            logging.error(
+                f"DELETE {endpoint} failed: {response.status_code} {response.text[:200]}"
             )
             return None
 

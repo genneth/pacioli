@@ -3,12 +3,13 @@ import logging
 import polars as pl
 from polars import col as C
 
+from cli_common import setup_logging
 from transaction_loader import load_transactions
 from transaction_manager import TransactionManager
 
 
 def main():
-    logging.basicConfig(level=logging.WARNING)
+    setup_logging(logging.WARNING)
 
     rows = load_transactions()
     tm = TransactionManager()

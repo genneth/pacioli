@@ -1,5 +1,7 @@
 import argparse
+import logging
 
+from cli_common import setup_logging
 from transaction_manager import TransactionManager
 
 
@@ -11,6 +13,7 @@ def main():
     )
     args = parser.parse_args()
 
+    setup_logging(logging.WARNING)
     tm = TransactionManager()
     initial_count = len(tm.llm_cache)
 
