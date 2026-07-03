@@ -17,14 +17,15 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 2.  **Loading (`transaction_loader.py`):**
     *   Reads all JSON files from `raw/`.
     *   **Deduplicates** transactions based on `internalTransactionId`.
-    *   Returns a dictionary of unique transactions per account.
+    *   Returns a flat list of unique `Transaction` objects.
 
 3.  **Enrichment (`transaction_manager.py`):**
-    *   Resolves categories using a priority hierarchy:
+    *   Resolves categories using a priority hierarchy (`SOURCE_PRIORITY`):
         1.  **Manual Overrides** (`data/manual_assignments.json`)
-        2.  **Zero Amount Checks** (Ignored/Excluded)
-        3.  **Regex Patterns** (`data/patterns.json`)
-        4.  **Agent/AI Classification** (`data/llm_cache.json`)
+        2.  **Transfer Matching** (paired inter-account transactions)
+        3.  **Zero Amount Checks** (Ignored/Excluded)
+        4.  **Regex Patterns** (`data/patterns.json`)
+        5.  **Agent/AI Classification** (`data/llm_cache.json`)
     *   Outputs a flat **Polars DataFrame**.
 
 ## Data Schema & Constraints
@@ -32,6 +33,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 ### `data/patterns.json`
 - **Format**: A dictionary where keys are the **Master Category List** and values are lists of pattern objects. 
 - **Integrity**: This is the single source of truth for categorization. Every category used in the system **must** exist as a key here.
+- **Validation**: Entries are validated with pydantic at load time (`PatternRule` in `transaction_manager.py`). A missing/empty/uncompilable `pattern`, unknown `field`, non-numeric bound, or unparseable time fails loudly with the offending category named — fix the entry rather than working around the error.
 - **Fields (per object)**:
     - `pattern`: A regex string (applied case-insensitively).
     - `field`: (Optional) The transaction field to search. Defaults to `counterparty`. Valid values: `counterparty`, `remittance`, or `any` (both).
@@ -78,7 +80,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 ### 3. Standing Orders for AI Agents
 *   **Custom Heuristics**: Always consult @data/ai_instructions.md for project-specific naming philosophies, meal timing, and personal schedule context before performing enrichment or labeling.
 *   **Grounded Categorization**: Before labeling a transaction, directly read `data/patterns.json` and `data/manual_assignments.json` to ensure consistency with existing rules.
-*   **Grep, Don't Read**: When inspecting large files in Level 2 directories, always use `search_file_content` with specific patterns rather than `read_file` to minimize exposure of irrelevant PII.
+*   **Grep, Don't Read**: When inspecting large files in Level 2 directories, always use grep-style search with specific patterns rather than reading whole files, to minimize exposure of irrelevant PII.
 *   **Scrub Before Commit**: If you are asked to create a new test or documentation example, **generate fake data**. Never copy-paste a real transaction ID or counterparty string into a tracked file.
 *   **Anonymization**: If you see a real name (e.g., "SMITH") or an account number in a string you are processing, replace it with a placeholder like `[USER]` or `[ACCOUNT_ID]` if that string is intended for a non-ignored file.
 *   **Pre-Commit Check**: Before performing a `git add`, scan the content for things that look like Level 1 or Level 2 data. If found, warn the user and stop.
@@ -90,12 +92,10 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 ## Large File Handling
 Some files in this project (e.g., `enriched_transactions.csv`, `llm_cache.json`) can grow very large. **Do not attempt to read these files entirely.**
 
-Instead, use Windows command-line tools or targeted tool calls to inspect subsets:
-- **Search CSV/JSON**: Use `search_file_content` with a pattern (e.g., a transaction ID or merchant name).
-- **Inspect CSV structure**: Use `run_shell_command` with `Get-Content -Head 10 enriched_transactions.csv`.
-- **Filtered inspection**: Use `Select-String` (PowerShell's grep) to find specific lines:
-  `Select-String "pattern" llm_cache.json | Select-Object -First 20`
-- **Paginated reading**: Use the `offset` and `limit` parameters in `read_file`.
+Instead, use targeted shell commands or paginated tool calls to inspect subsets:
+- **Search CSV/JSON**: `grep "pattern" enriched_transactions.csv | head -20` (e.g., a transaction ID or merchant name).
+- **Inspect CSV structure**: `head -10 enriched_transactions.csv`.
+- **Paginated reading**: use your file-reading tool's offset/limit parameters rather than reading the whole file.
 
 ### Configuration
 *   **Environment:** managed via `.env`.
@@ -123,7 +123,7 @@ The `TransactionManager` class in `transaction_manager.py` provides the followin
 ## Setup & Usage
 
 ### Prerequisites
-*   Python 3.13+
+*   Python 3.14+
 *   `uv` (Universal Python Package Installer)
 *   GoCardless Account (Bank Account Data API)
 
@@ -151,7 +151,7 @@ All commands should be run using `uv` to ensure the correct environment and depe
     ```
 *   **Run Tests:**
     ```bash
-    uv run python -m pytest
+    uv run pytest
     ```
 *   **Linting & Formatting:**
     ```bash
@@ -169,17 +169,17 @@ All commands should be run using `uv` to ensure the correct environment and depe
 *   **Data Integrity:** Never modify files in `raw/` manually.
 
  If data needs to be fixed, use the `TransactionManager` to create a manual assignment or pattern override.
-*   **Type Safety:** Uses `pydantic` for data validation and `mypy` for static analysis.
+*   **Type Safety:** Uses `pydantic` to validate `data/patterns.json` at load and `mypy` for static analysis.
 *   **Data Frames (Polars):**
     *   Import convention: `from polars import col as C`
     *   Column selection: Use property access `C.column_name` instead of function call `C("column_name")` whenever possible.
-*   **Testing:** `pytest` is used for unit tests. Tests are located in `tests/`. Best to use `uv run python -m pytest` instead of just `uv run pytest` to make all the paths Just Work.
+*   **Testing:** `pytest` is used for unit tests. Tests are located in `tests/`; `uv run pytest` works directly (`pythonpath` is configured in `pyproject.toml`).
 *   **Comments:** do not add comments which are just restating what the code is doing. Only add comments that explain _why_, and document assumptions and why the assumptions are justified.
 
 ## Ops Skill
 The project includes a specialized `ops` skill for managing the transaction pipeline.
 
-**Location:** `.gemini/skills/ops/SKILL.md`
+**Location:** `skills/ops/SKILL.md` (symlinked into `.gemini/skills`, `.claude/skills`, and `.agents/skills` so every harness sees the same source of truth)
 
 **Core Workflows:**
 1.  **Sync Transactions:** `uv run update_transactions.py` - Fetches new data from GoCardless.
