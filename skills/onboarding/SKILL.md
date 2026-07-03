@@ -37,8 +37,10 @@ Run these checks at the start of every onboarding session.
 
 Confirm the environment can run the project.
 
-1. Verify `uv` is installed. If not: `winget install astral-sh.uv` (Windows) or
-   see https://docs.astral.sh/uv/getting-started/installation/
+1. Verify `uv` is installed. If not, install it for the current platform — see
+   https://docs.astral.sh/uv/getting-started/installation/ (e.g.
+   `curl -LsSf https://astral.sh/uv/install.sh | sh` on Linux/macOS,
+   `winget install astral-sh.uv` on Windows)
 2. Run `uv sync` to install dependencies from `pyproject.toml`
 3. Verify: `uv run python -c "import polars; import requests; print('OK')"`
 4. Create `raw/` and `data/` directories if they don't exist
@@ -66,15 +68,15 @@ and will never be committed.
 ```bash
 uv run python -c "from go_cardless_client import Client; Client()"
 ```
-If this succeeds (prints "Successfully authenticated and fetched institutions"),
-credentials are good. If it fails, report the error and iterate.
+If this exits cleanly, credentials are good — success is **silent** (the
+confirmation message is logged at INFO, which isn't configured here). Any
+exception means bad credentials; report the error and iterate.
 
 ---
 
 ## Phase 3: Bank Linking
 
-This replaces the old `one-time.ipynb`. The agent drives the GoCardless API to
-connect the user's bank accounts.
+The agent drives the GoCardless API to connect the user's bank accounts.
 
 ### 3a. Discover institutions
 
@@ -225,6 +227,12 @@ Create `data/patterns.json` with the agreed categories as keys, each mapping to
 an empty list. This establishes the master category set. Also create empty
 `data/manual_assignments.json` (`{}`) and `data/llm_cache.json` (`{}`).
 
+Then initialize `data/` as its own **private git repository**
+(`git -C data init && git -C data add -A && git -C data commit -m "initial"`).
+The directory is gitignored from the main repo, so this local-only history is
+the sole backup of the curated labelling data — commit it after every
+significant labelling session.
+
 ### 5d. First-pass labelling
 
 Now that categories exist, do an initial pass. Focus on the **Pareto wins**:
@@ -273,7 +281,7 @@ Write `data/ai_instructions.md` based on the user's answers. Cover these topics:
 
 1. Full pipeline: `uv run enrich_transactions.py`
 2. Quality: `uv run lint_patterns.py`
-3. Security: `uv run python check_pii.py`
+3. Security: `uv run check_pii.py`
 4. Visualization: `uv run generate_spending_viz.py`
 5. Report final stats: total transactions, % categorized, category breakdown
 6. Explain the `ops` skill and the "daily pass" workflow for ongoing use

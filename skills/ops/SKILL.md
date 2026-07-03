@@ -32,7 +32,7 @@ at the bottom of that stack and, over time, promoting confident decisions upward
 | `uv run lint_patterns.py` | Dead / overlapping pattern report | — |
 | `uv run list_categories.py` | Print the closed set of valid categories | — |
 | `uv run generate_spending_viz.py` | Interactive spending chart (needs enriched CSV) | — |
-| `uv run python check_pii.py` | Scan tracked files for secrets / PII | — |
+| `uv run check_pii.py` | Scan tracked files for secrets / PII | — |
 
 ---
 
@@ -55,7 +55,11 @@ enough to reason about carefully):
 uv run find_uncategorized.py --limit 50
 ```
 
-Output is pipe-delimited: `ID | DATE | TIME | AMT | COUNTERPARTY | REMITTANCE`.
+Output is pipe-delimited. The detail view is
+`ID | DATE | TIME | AMT | PARTY | REMIT | META`; the `--summary` view is
+`N | AVG | SAMPLE_ID | PARTY | REMIT | META`. META is sparse context
+(`card=NNNN type=… fx=…`) — card and currency often disambiguate who spent and
+whether it's travel.
 
 Use `--force` to include transactions already labelled by the AI cache (useful for
 re-evaluating earlier decisions you're not confident in).
@@ -88,11 +92,11 @@ For each transaction, follow this resolution order:
    differ (e.g., the original was wrong).
 3. **Context clues** — use surrounding transactions, time of day, amount, and
    the heuristics from `data/ai_instructions.md` to classify.
-4. **External Verification** — Use `google_web_search` or `browser_agent` (Google
-   Maps) to identify the business or confirm its nature (e.g., "Is X a sit-down
-   restaurant or a takeaway?"). **Perform this check whenever internal clues
-   (Gmail, Calendar, or location context) are insufficient to reach high
-   confidence.**
+4. **External Verification** — Use whatever web search or browsing/maps tools
+   your harness provides to identify the business or confirm its nature (e.g.,
+   "Is X a sit-down restaurant or a takeaway?"). **Perform this check whenever
+   internal clues (email, calendar, or location context) are insufficient to
+   reach high confidence.**
 
 ### 4. Choose the right destination
 
@@ -108,10 +112,13 @@ When in doubt, use the AI Cache. It's the cheapest decision to make and to undo.
 
 ### 5. Batch persist
 
-Write all decisions to a temp JSON file and persist in one shot:
+Write all decisions to a temp JSON file and persist in one shot. Put the file in
+a **private scratch location** (your session scratchpad if the harness provides
+one, else a gitignored path like `downloads/`) — never world-readable `/tmp`,
+since the file contains real merchant/spending data:
 
 ```bash
-uv run update_llm_cache.py --batch /tmp/batch_decisions.json
+uv run update_llm_cache.py --batch <scratch>/batch_decisions.json
 ```
 
 The batch file is a **JSON array of objects** (not a dictionary):
@@ -162,7 +169,9 @@ This is conservative by design — only promote when the evidence is clear.
 2. Confirm with user: "X has appeared N times as 'Category'. Create a pattern?"
 3. `uv run test_pattern.py "REGEX"` — verify it catches the right transactions
    and *only* those transactions (check for overlaps with existing patterns)
-4. Add to `data/patterns.json` under the correct category key
+4. Add to `data/patterns.json` under the correct category key. Entries are
+   schema-validated at load time — a typo'd key, bad regex, or malformed
+   constraint fails loudly on the next run; fix the entry, don't work around it.
 5. `uv run cleanup_cache.py` — removes now-redundant cache entries
 6. `uv run lint_patterns.py` — confirms no overlaps or dead patterns
 
@@ -196,6 +205,8 @@ aren't needed (e.g., skip sync if data is fresh, skip viz if not requested):
 4. **Cleanup**: `uv run cleanup_cache.py`
 5. **Re-enrich**: `uv run enrich_transactions.py` (incorporate new labels)
 6. **Visualize**: `uv run generate_spending_viz.py`
+7. **Snapshot**: `git -C data add -A && git -C data commit -m "daily pass"`
+   (skip if nothing changed)
 
 ---
 
@@ -204,6 +215,9 @@ aren't needed (e.g., skip sync if data is fresh, skip viz if not requested):
 - **Never silently swallow errors or warnings** from command output.
 - **Categories are closed** — only those in `data/patterns.json` keys are valid.
 - **Privacy** — never bulk-read `data/` or `raw/` files. Grep for specific terms.
-  Never commit anything from `data/`, `raw/`, or `*.csv`.
+  Never commit anything from `data/`, `raw/`, or `*.csv` to the *main* repo.
+- **Backup** — `data/` is its own private, local-only git repository (invisible
+  to the main repo). Commit it after labelling sessions; its history is the only
+  backup of the curated patterns and cache.
 - **Disjoint patterns** — all regex patterns must be mutually exclusive. Use
   amount/time/day constraints to disambiguate broad patterns from specific ones.
