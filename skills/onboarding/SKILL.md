@@ -76,78 +76,65 @@ exception means bad credentials; report the error and iterate.
 
 ## Phase 3: Bank Linking
 
-The agent drives the GoCardless API to connect the user's bank accounts.
+The agent connects the user's bank accounts. `docs/gocardless.md` holds the
+object model and the API constraints; this phase is the procedure.
 
 ### 3a. Discover institutions
 
-The `Client` class hardcodes `country=GB`. For other countries, call the API
-directly:
+`Client` hardcodes `country=GB`. For other countries, query through the wrapper:
+
 ```python
 client.get("institutions/", {"country": "XX"})  # ISO 3166-1 alpha-2
 ```
-Present available banks to the user. Let them pick which to connect.
+
+`client.institutions` is already loaded as a Polars frame. Present the banks and
+let the user pick. Note each one's `transaction_total_days` and
+`max_access_valid_for_days_reconfirmation` — they differ per bank, and the
+agreement has to respect them.
 
 ### 3b. Check existing state
 
 ```python
-client.get("agreements/enduser/")
 client.get("requisitions/")
 ```
-If valid agreements and linked requisitions (status `LN`) already exist with
-populated `accounts`, skip to Phase 4.
 
-### 3c. Create agreements
+If a requisition is already `LN` with populated `accounts`, skip to Phase 4.
+Query this rather than recording it anywhere: a written-down account list goes
+stale silently, and the API is always current.
 
-For each selected bank:
-```python
-client.post("agreements/enduser/", {
-    "institution_id": "<INSTITUTION_ID>",
-    "max_historical_days": 730,       # or institution's max
-    "access_valid_for_days": 180,
-    "access_scope": ["balances", "details", "transactions"]
-})
+### 3c. Create the connections
+
+For each bank the user picked:
+
+```bash
+uv run renew_connections.py --institution <INSTITUTION_ID> --no-poll
 ```
-Explain what `max_historical_days` means and let the user choose.
 
-### 3d. Create requisitions
+Use the script rather than hand-rolling the agreement and requisition calls. It
+requests `reconfirmation` together with an access period above the 90-day SCA
+default, and the API rejects either one without the other. Getting that wrong
+does not fail at setup; it fails at renewal, three months later.
 
-For each agreement:
-```python
-client.post("requisitions/", {
-    "institution_id": "<INSTITUTION_ID>",
-    "agreement": "<AGREEMENT_ID>",
-    "redirect": "https://google.com",
-    "reference": "<USER_LABEL>"       # e.g. "BarclaysMain"
-})
-```
-Ask the user for a friendly label for each connection.
+Explain `max_historical_days` to the user if they ask — it is how far back
+transactions are readable, capped by the bank's `transaction_total_days`.
 
-### 3e. Present authorization links
+### 3d. Present authorization links
 
-Each requisition has a `link` field — the URL the user must visit to authorize
-with their bank.
-
-**Present both the URL and a terminal QR code** (for mobile bank auth):
-```python
-import qrcode
-qr = qrcode.QRCode(box_size=1, border=1)
-qr.add_data(link_url)
-qr.make(fit=True)
-qr.print_ascii(invert=True)
-```
+The script prints each requisition's `link` as text and as a terminal QR code.
+Show both — the QR is for authorising from a phone.
 
 Tell the user: "Open this link (or scan the QR) to log into your bank and
 authorize the connection. Come back here when you're done."
 
-### 3f. Wait and verify
+### 3e. Wait and verify
 
 **This is a hard pause.** The agent cannot proceed until the user confirms they
 have authorized.
 
-After confirmation, poll the requisitions:
 ```python
 client.get("requisitions/")
 ```
+
 Check that status is `LN` (Linked) and `accounts` is non-empty. If still `CR`
 (Created), the authorization may not have completed — ask the user to retry.
 

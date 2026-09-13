@@ -22,6 +22,8 @@ at the bottom of that stack and, over time, promoting confident decisions upward
 | Script | Purpose | Key args |
 |--------|---------|----------|
 | `uv run update_transactions.py` | Fetch new data from GoCardless | — |
+| `uv run renew_connections.py` | Re-authorise bank connections | `--all`, `--institution ID`, `--no-poll` |
+| `uv run prune_connections.py` | Delete stale requisitions and orphan agreements | `--apply` (default is a report) |
 | `uv run enrich_transactions.py` | Apply hierarchy, output CSV + summary | — |
 | `uv run find_uncategorized.py` | List unlabelled transactions | `--limit N`, `--summary`, `--force` |
 | `uv run update_llm_cache.py` | Persist AI decisions | `--batch FILE` or `--id/--name/--category/--reason` |
@@ -160,6 +162,49 @@ If it fails (503, timeout, expired token), **report the error explicitly**. If
 one account succeeds and another fails, continue with available data but clearly
 state which account is stale, why, and since when.
 
+A `401` whose body mentions `EUA ... has expired` is different from every other
+failure: the connection is dead and will stay dead until it is remade. See
+Connection Health below.
+
+### Connection Health
+
+A GoCardless End User Agreement lasts 90 days before the end user must
+re-authorise. When it lapses, the affected accounts return `401` on every sync
+and silently stop accumulating data — the failure is per-account, so the run as
+a whole still succeeds.
+
+Check the state of every connection at once:
+
+```bash
+uv run prune_connections.py       # report; never deletes without --apply
+```
+
+This lists which requisitions are current and which have expired, without
+needing to remember which banks exist. `docs/gocardless.md` covers the object
+model and the API constraints in full.
+
+When something has expired:
+
+```bash
+uv run renew_connections.py --no-poll
+```
+
+It prints an authorisation URL and a QR code for each lapsed connection. Hand
+those to the user — authorisation is a hard pause and cannot be automated. Once
+they confirm, re-query `requisitions/` to check for `LN`, then:
+
+```bash
+uv run prune_connections.py --apply
+```
+
+Deleting a requisition also deletes its agreement, so pruning retires both.
+It will not touch a live or pending connection, so it is safe to run before the
+user has finished authorising.
+
+Connections created by `renew_connections.py` carry the `reconfirmation` flag,
+which means the *next* renewal is a link the user clicks rather than a full bank
+login. Reconfirmation still falls due roughly every 90 days.
+
 ### Pattern Promotion
 
 Promote confident, high-frequency AI cache entries to deterministic regex patterns.
@@ -199,7 +244,10 @@ if the CSV is stale.
 When the user asks for a "daily pass", compose these steps — but skip any that
 aren't needed (e.g., skip sync if data is fresh, skip viz if not requested):
 
-1. **Sync**: `uv run update_transactions.py`
+1. **Sync**: `uv run update_transactions.py`. Read the output, not just the exit
+   code — failures are per-account and the command still exits `0`. An
+   `EUA ... has expired` means that account has silently stopped updating; see
+   Connection Health.
 2. **Enrich**: `uv run enrich_transactions.py` (baseline to find gaps)
 3. **Categorize**: if gaps exist, run the Primary Workflow above
 4. **Cleanup**: `uv run cleanup_cache.py`
