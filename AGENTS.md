@@ -95,7 +95,7 @@ The core philosophy is **immutable raw data** combined with **derived state**. T
 *   **`find_uncategorized.py`**: Identifies gaps in categorization for the agent to resolve.
 *   **`update_llm_cache.py`**: Records agent-led decisions into the cache.
 *   **`renew_connections.py`**: Creates reconfirmable bank connections and prints authorisation links.
-*   **`prune_connections.py`**: Reports and deletes stale requisitions and orphan agreements.
+*   **`prune_connections.py`**: Reports each connection's status and reconfirmation date; deletes stale requisitions and orphan agreements.
 *   **`docs/gocardless.md`**: GoCardless object model, endpoints, statuses, and constraints. Read it before touching bank connections.
 
 ### Transaction Manager Actions

@@ -179,9 +179,14 @@ Check the state of every connection at once:
 uv run prune_connections.py       # report; never deletes without --apply
 ```
 
-This lists which requisitions are current and which have expired, without
-needing to remember which banks exist. `docs/gocardless.md` covers the object
-model and the API constraints in full.
+This lists each institution's current connection, whether it is reconfirmable,
+the date reconfirmation falls due, and which requisitions have expired —
+without needing to remember which banks exist. `docs/gocardless.md` covers the
+object model and the API constraints in full.
+
+A connection marked `NOT reconfirmable` will need a full bank login at its next
+renewal; a reconfirmable one needs only a click. `DUE SOON` marks a
+reconfirmation due within a fortnight.
 
 When something has expired:
 

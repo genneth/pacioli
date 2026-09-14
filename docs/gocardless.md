@@ -176,6 +176,20 @@ current and reports the rest. It never deletes a live or pending requisition, so
 it is safe to run at any point, including before a replacement has been
 authorised.
 
+It also prints the current connection per institution with its reconfirmation
+state and the date reconfirmation falls due, so one run answers both "what is
+connected" and "is anything about to lapse":
+
+```
+3 connection(s) in use
+  NATIONWIDE_NAIAGB21       LN  accounts=2  reconfirmable, access 730d  reconfirm by 2026-12-12 (89d)
+```
+
+An agreement created without the reconfirmation flag is labelled
+`NOT reconfirmable`, which means the next renewal needs a full bank login rather
+than a click. Anything inside the last fortnight before its due date is marked
+`DUE SOON`.
+
 To spot a dormant account, compare the newest file per account against the
 newest overall:
 
